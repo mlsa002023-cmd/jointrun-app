@@ -1074,21 +1074,48 @@ function PremiumModule({ currentProfile, triggerFeedback }) {
 // ─────────────────────────────────────────────
 
 function JOINTRUNUnified() {
-  const { currentUser, logout } = useAuth();
-  const [profiles, setProfiles] = useState(PATIENT_PROFILES_DEFAULT);
-  const [selectedId, setSelectedId] = useState("hairdresser");
-  const currentProfile = profiles.find(p => p.id === selectedId) || profiles[0];
+ const { currentUser, logout } = useAuth();
 
-  // 로그인 시 Firestore에 저장된 최신 지표 스냅샷을 불러와 현재 프로필에 반영
-  useEffect(() => {
-    if (!currentUser) return;
-    (async () => {
-      const snapshot = await getProfileSnapshot(currentUser.uid);
-      if (snapshot) {
-        setProfiles(ps => ps.map(x => x.id === selectedId ? { ...x, ...snapshot } : x));
-      }
-    })();
-  }, [currentUser]);
+// 실제 로그인 사용자 기반 프로필 생성
+const buildUserProfile = (user, overrides = {}) => ({
+  id: user.uid,
+  name: user.displayName || user.email?.split("@")[0] || "회원",
+  age: 0,
+  gender: "",
+  job: "직업 미등록",
+  symptoms: "증상 미등록",
+  handCondition: "",
+  fingerScore: 70,
+  fingerAge: 40,
+  fingerReserve: 65,
+  recoveryScore: 72,
+  morningStiffness: "정상",
+  morningStiffnessMin: 15,
+  painTrend: "",
+  painIndex: 3,
+  riskForecast: 20,
+  weeklyROMChange: "측정 대기 중",
+  streakDays: 1,
+  ...overrides,
+});
+
+const [userProfile, setUserProfile] = useState(
+  currentUser ? buildUserProfile(currentUser) : PATIENT_PROFILES_DEFAULT[0]
+);
+
+const currentProfile = userProfile;
+
+// 로그인 시 Firestore 스냅샷 불러와 프로필에 반영
+useEffect(() => {
+  if (!currentUser) return;
+  setUserProfile(buildUserProfile(currentUser));
+  (async () => {
+    const snapshot = await getProfileSnapshot(currentUser.uid);
+    if (snapshot) {
+      setUserProfile(prev => ({ ...prev, ...snapshot }));
+    }
+  })();
+}, [currentUser?.uid]);
 
   const [activeTab, setActiveTab] = useState("home");
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
@@ -1111,7 +1138,7 @@ function JOINTRUNUnified() {
 
   const handleScanCompleted = (metrics) => {
     const updated = { ...currentProfile, fingerScore: Math.min(100, currentProfile.fingerScore+1), painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
-    setProfiles(p => p.map(x => x.id === selectedId ? updated : x));
+   setUserProfile(updated);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       saveScanResult(currentUser.uid, metrics).catch(err => console.error("스캔 결과 저장 실패:", err));
