@@ -418,7 +418,6 @@ try {
       triggerFeedback("카메라 접근 불가 — 시뮬레이션 모드로 전환합니다.");
       return;
     }
-
     setStatus("ready");
     triggerFeedback("카메라 연결 완료! 손을 화면에 비춰주세요.");
     rafRef.current = requestAnimationFrame(detectLoop);
