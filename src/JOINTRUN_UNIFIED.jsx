@@ -31,11 +31,7 @@ import { saveScanResult, getScanHistory, saveCheckIn, saveProfileSnapshot, getPr
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
 
-// @latest 태그는 JS 번들과 WASM 파일의 버전이 서로 다른 시점에 캐싱되어
-// 어긋날 수 있고, 이게 "모델 로딩 실패 → 시뮬레이션 모드로 강제 전환"의 주 원인입니다.
-// 반드시 고정된 버전 번호를 사용하세요 (npm의 @mediapipe/tasks-vision 최신 안정 버전).
-const MP_VERSION = "0.10.35";
-const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
+// MediaPipe — npm 패키지로 설치 (CDN dynamic import 제거)
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 const HAND_CONNECTIONS = [
