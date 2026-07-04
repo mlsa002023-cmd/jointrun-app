@@ -1,17 +1,10 @@
 // src/contexts/AuthContext.jsx
-// Firebase Auth Context — Firebase 없을 때 데모 모드로 동작
+// Firebase Auth Context — top-level await 제거 버전 (Vite 빌드 호환)
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { FIREBASE_ENABLED, auth, db } from "../firebase/config";
 
-const AuthContext = createContext(null);
-
-// Firebase가 있을 때만 동적 import
-let fbAuth = {};
-if (FIREBASE_ENABLED) {
-  fbAuth = await import("firebase/auth").catch(() => ({}));
-}
-const {
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -20,35 +13,37 @@ const {
   onAuthStateChanged,
   updateProfile,
   sendPasswordResetEmail,
-} = fbAuth;
+} from "firebase/auth";
+import {
+  doc, setDoc, getDoc, serverTimestamp,
+} from "firebase/firestore";
 
-let fbFirestore = {};
-if (FIREBASE_ENABLED) {
-  fbFirestore = await import("firebase/firestore").catch(() => ({}));
-}
-const { doc, setDoc, getDoc, serverTimestamp } = fbFirestore;
+const AuthContext = createContext(null);
 
 const googleProvider = FIREBASE_ENABLED ? new GoogleAuthProvider() : null;
 
 async function upsertUserDoc(user) {
   if (!FIREBASE_ENABLED || !db) return;
-  const ref = doc(db, "users", user.uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      email: user.email || "",
-      displayName: user.displayName || "",
-      photoURL: user.photoURL || "",
-      provider: user.providerData?.[0]?.providerId || "password",
-      createdAt: serverTimestamp(),
-      lastLoginAt: serverTimestamp(),
-    });
-  } else {
-    await setDoc(ref, { lastLoginAt: serverTimestamp() }, { merge: true });
+  try {
+    const ref = doc(db, "users", user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email: user.email || "",
+        displayName: user.displayName || "",
+        photoURL: user.photoURL || "",
+        provider: user.providerData?.[0]?.providerId || "password",
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, { lastLoginAt: serverTimestamp() }, { merge: true });
+    }
+  } catch (e) {
+    console.warn("upsertUserDoc 실패:", e);
   }
 }
 
-// 데모 모드 가짜 유저
 const DEMO_USER = { uid: "demo", email: "demo@jointrun.app", displayName: "데모 사용자" };
 
 export function AuthProvider({ children }) {
@@ -57,8 +52,7 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    if (!FIREBASE_ENABLED || !auth || !onAuthStateChanged) {
-      // 데모 모드: 로그인 없이 바로 앱 진입
+    if (!FIREBASE_ENABLED || !auth) {
       setCurrentUser(DEMO_USER);
       setAuthLoading(false);
       return;
@@ -111,7 +105,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     if (!FIREBASE_ENABLED) { setCurrentUser(null); return; }
-    await signOut(auth);
+    try { await signOut(auth); } catch (e) { console.warn("logout 실패:", e); }
   }, []);
 
   const resetPassword = useCallback(async (email) => {
