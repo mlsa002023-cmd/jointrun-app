@@ -390,26 +390,27 @@ try {
     }
     landmarkerRef.current = landmarker;
 
-    // 3) 카메라 권한/스트림 (실패 원인: 권한 거부, 카메라 없음, HTTPS 아님)
-    const stream = await navigator.mediaDevices.getUserMedia({
-  video: {
-    facingMode: "user",
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-  }
-});
-if (videoRef.current) {
-  const v = videoRef.current;
-  v.srcObject = stream;
-  v.setAttribute("playsinline", "");
-  v.setAttribute("webkit-playsinline", "");
-  v.muted = true;
-  v.autoplay = true;
-  await new Promise((resolve, reject) => {
-    v.onloadedmetadata = () => v.play().then(resolve).catch(reject);
-    setTimeout(reject, 8000);
-  });
-}
+// 3) 카메라 권한/스트림 (실패 원인: 권한 거부, 카메라 없음, HTTPS 아님)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }
+      });
+      if (videoRef.current) {
+        const v = videoRef.current;
+        v.srcObject = stream;
+        v.setAttribute("playsinline", "");
+        v.setAttribute("webkit-playsinline", "");
+        v.muted = true;
+        v.autoplay = true;
+        await new Promise((resolve, reject) => {
+          v.onloadedmetadata = () => v.play().then(resolve).catch(reject);
+          setTimeout(reject, 8000);
+        });
+      }
     } catch (err) {
       console.error("[JOINTRUN] 카메라 접근 실패:", err);
       setErrorMessage(`카메라에 접근할 수 없습니다. (${err?.message || "권한 거부"})`);
