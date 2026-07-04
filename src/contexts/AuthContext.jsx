@@ -1,6 +1,3 @@
-// src/contexts/AuthContext.jsx
-// Firebase Auth Context — top-level await 제거 버전 (Vite 빌드 호환)
-
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { FIREBASE_ENABLED, auth, db } from "../firebase/config";
 
