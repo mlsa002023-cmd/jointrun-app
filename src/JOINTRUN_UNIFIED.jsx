@@ -253,7 +253,16 @@ async function callAnthropicCoach(messages, profile) {
 }
 
 // ─────────────────────────────────────────────
-// HAND SCAN ENGINE (MediaPipe 실제 통합)
+// HAND SCAN ENGINE (MediaPipe 실제 통합) — FIXED
+//
+// 핵심 수정 사항:
+// 1) <video>, <canvas>를 status와 무관하게 항상 DOM에 마운트한다.
+//    → getUserMedia로 스트림을 받는 시점에 videoRef.current가 절대 null이 아님.
+// 2) idle / loading / simulation / completed 오버레이는 카메라 위에
+//    z-index로 얹는 방식으로 바꾼다 (조건부 return 제거).
+// 3) video.play() 이후 실제로 프레임이 들어오는지(readyState, videoWidth)
+//    폴링해서 확인하고, 확인되면 detectLoop를 시작한다.
+// 4) 언마운트/재시작 시 스트림 정리(stopCamera)를 항상 보장한다.
 // ─────────────────────────────────────────────
 
 function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
@@ -263,8 +272,10 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
   const rafRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
   const latestResultRef = useRef(null);
+  const handLandmarkerCtorRef = useRef(null);
 
-  const [status, setStatus] = useState("idle"); // idle|loading|ready|error|completed
+  // idle | loading | camera_ready(스트림은 붙었지만 아직 손 미검출) | scanning | simulation | completed
+  const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState(null);
   const [handDetected, setHandDetected] = useState(false);
   const [liveMetrics, setLiveMetrics] = useState(null);
@@ -275,9 +286,10 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
   const [poseSecondsLeft, setPoseSecondsLeft] = useState(POSE_GUIDE[0].duration);
   const poseIndexRef = useRef(0);
 
-  // 스캔이 시작되면(status === "ready") 유도 동작을 순서대로 자동 순환.
+  const isCameraActive = status === "camera_ready" || status === "scanning";
+
   useEffect(() => {
-    if (status !== "ready") return;
+    if (status !== "scanning") return;
     poseIndexRef.current = 0;
     setPoseIndex(0);
     setPoseSecondsLeft(POSE_GUIDE[0].duration);
@@ -297,9 +309,17 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
 
   const stopCamera = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
+    lastVideoTimeRef.current = -1;
+    if (videoRef.current) {
+      videoRef.current.pause?.();
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+        videoRef.current.srcObject = null;
+      }
+    }
+    if (landmarkerRef.current) {
+      try { landmarkerRef.current.close?.(); } catch {}
+      landmarkerRef.current = null;
     }
   }, []);
 
@@ -307,7 +327,8 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
 
   const drawSkeleton = useCallback((landmarks, canvas, videoW, videoH) => {
     const ctx = canvas.getContext("2d");
-    canvas.width = videoW; canvas.height = videoH;
+    if (canvas.width !== videoW) canvas.width = videoW;
+    if (canvas.height !== videoH) canvas.height = videoH;
     ctx.clearRect(0, 0, videoW, videoH);
     const toCanvas = (lm) => ({ x: lm.x * videoW, y: lm.y * videoH });
     ctx.strokeStyle = "#00fff7"; ctx.lineWidth = 2;
@@ -318,7 +339,7 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
     landmarks.forEach((lm, idx) => {
       const p = toCanvas(lm);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, idx === 0 ? 5 : 3, 0, 2*Math.PI);
+      ctx.arc(p.x, p.y, idx === 0 ? 5 : 3, 0, 2 * Math.PI);
       ctx.fillStyle = idx === 0 ? "#ff6b6b" : "#c084fc";
       ctx.fill();
     });
@@ -328,7 +349,7 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !landmarkerRef.current) return;
-    if (video.currentTime !== lastVideoTimeRef.current) {
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
       lastVideoTimeRef.current = video.currentTime;
       const result = landmarkerRef.current.detectForVideo(video, performance.now());
       if (result.landmarks?.length > 0) {
@@ -348,40 +369,59 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
     rafRef.current = requestAnimationFrame(detectLoop);
   }, [drawSkeleton]);
 
-  // HandLandmarker 생성: GPU 델리게이트 우선 시도, 실패 시 CPU로 자동 폴백.
-  // (모바일 브라우저/구형 GPU/WebView에서 GPU 델리게이트가 조용히 실패하는 경우가 많음)
   const createLandmarker = async (vision) => {
+    const Ctor = handLandmarkerCtorRef.current;
     try {
-      return await HandLandmarkerCtor.createFromOptions(vision, {
+      return await Ctor.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
         runningMode: "VIDEO", numHands: 1,
       });
     } catch (gpuErr) {
       console.warn("[JOINTRUN] GPU delegate 실패, CPU로 재시도:", gpuErr);
-      return await HandLandmarkerCtor.createFromOptions(vision, {
+      return await Ctor.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
         runningMode: "VIDEO", numHands: 1,
       });
     }
   };
 
-  let HandLandmarkerCtor = null; // createLandmarker 클로저에서 참조
+  const waitForVideoFrame = (video, timeoutMs = 8000) =>
+    new Promise((resolve, reject) => {
+      const start = performance.now();
+      const check = () => {
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          resolve();
+          return;
+        }
+        if (performance.now() - start > timeoutMs) {
+          reject(new Error("비디오 프레임 대기 시간 초과"));
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      check();
+    });
 
   const startScan = async () => {
     setStatus("loading");
     setErrorMessage(null);
     triggerFeedback("MediaPipe 모델을 불러오는 중...");
 
-    // 1+2) MediaPipe npm 패키지로 직접 로드 (Vite CDN dynamic import 문제 완전 해결)
-let landmarker;
-try {
-  const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
-  HandLandmarkerCtor = HandLandmarker;
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
-  );
-  landmarker = await createLandmarker(vision);
-} catch (err) {
+    if (!videoRef.current) {
+      setErrorMessage("카메라 엘리먼트를 찾을 수 없습니다.");
+      setStatus("simulation");
+      return;
+    }
+
+    let landmarker;
+    try {
+      const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
+      handLandmarkerCtorRef.current = HandLandmarker;
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+      );
+      landmarker = await createLandmarker(vision);
+    } catch (err) {
       console.error("[JOINTRUN] HandLandmarker 초기화 실패:", err);
       setErrorMessage(`AI 모델(WASM) 초기화에 실패했습니다. (${err?.message || "알 수 없는 오류"})`);
       setStatus("simulation");
@@ -390,35 +430,27 @@ try {
     }
     landmarkerRef.current = landmarker;
 
-// 3) 카메라 권한/스트림 (실패 원인: 권한 거부, 카메라 없음, HTTPS 아님)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        }
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
-      if (videoRef.current) {
-        const v = videoRef.current;
-        v.srcObject = stream;
-        v.setAttribute("playsinline", "");
-        v.setAttribute("webkit-playsinline", "");
-        v.muted = true;
-        v.autoplay = true;
-        await new Promise((resolve, reject) => {
-          v.onloadedmetadata = () => v.play().then(resolve).catch(reject);
-          setTimeout(reject, 8000);
-        });
-      }
+      const v = videoRef.current;
+      v.srcObject = stream;
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+      v.muted = true;
+      v.autoplay = true;
+      await v.play();
+      await waitForVideoFrame(v);
     } catch (err) {
-      console.error("[JOINTRUN] 카메라 접근 실패:", err);
+      console.error("[JOINTRUN] 카메라 접근/재생 실패:", err);
       setErrorMessage(`카메라에 접근할 수 없습니다. (${err?.message || "권한 거부"})`);
       setStatus("simulation");
       triggerFeedback("카메라 접근 불가 — 시뮬레이션 모드로 전환합니다.");
       return;
     }
-    setStatus("ready");
+
+    setStatus("scanning");
     triggerFeedback("카메라 연결 완료! 손을 화면에 비춰주세요.");
     rafRef.current = requestAnimationFrame(detectLoop);
   };
@@ -434,27 +466,35 @@ try {
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1200);
 
-    // Notify parent
     const stiffnessMin = Math.round((100 - avgScore) * 0.5);
     const painIndex = Math.round((100 - avgScore) / 15);
     setScanResult({ romDeg: avgFlexion, stiffnessMin, painIndex, fingers, avgScore });
-    onScanCompleted({ romDeg: avgFlexion, stiffnessMin, painIndex, avgScore, fingers, recommendation: buildRecommendation(avgScore, avgFlexion) });
+    onScanCompleted({
+      romDeg: avgFlexion, stiffnessMin, painIndex, avgScore, fingers,
+      recommendation: buildRecommendation(avgScore, avgFlexion),
+    });
     triggerFeedback(`스캔 저장 완료! Finger Score: ${avgScore}점`);
+    stopCamera();
+    setStatus("completed");
   };
 
   const runSimulation = () => {
     const simResult = {
       romDeg: 122, stiffnessMin: 32, painIndex: 6,
       fingers: [
-        { key:"index", name:"검지", flexion: 118, deviation: 4.2, deviationDir:"ulnar", score: 82 },
-        { key:"middle", name:"중지", flexion: 125, deviation: 3.1, deviationDir:"radial", score: 88 },
-        { key:"ring", name:"약지", flexion: 110, deviation: 6.8, deviationDir:"ulnar", score: 72 },
-        { key:"pinky", name:"소지", flexion: 105, deviation: 5.5, deviationDir:"ulnar", score: 68 },
+        { key: "index", name: "검지", flexion: 118, deviation: 4.2, deviationDir: "ulnar", score: 82 },
+        { key: "middle", name: "중지", flexion: 125, deviation: 3.1, deviationDir: "radial", score: 88 },
+        { key: "ring", name: "약지", flexion: 110, deviation: 6.8, deviationDir: "ulnar", score: 72 },
+        { key: "pinky", name: "소지", flexion: 105, deviation: 5.5, deviationDir: "ulnar", score: 68 },
       ],
       avgScore: 78,
     };
     setScanResult(simResult);
-    onScanCompleted({ romDeg: simResult.romDeg, stiffnessMin: simResult.stiffnessMin, painIndex: simResult.painIndex, avgScore: simResult.avgScore, fingers: simResult.fingers, recommendation: buildRecommendation(simResult.avgScore, simResult.romDeg) });
+    onScanCompleted({
+      romDeg: simResult.romDeg, stiffnessMin: simResult.stiffnessMin, painIndex: simResult.painIndex,
+      avgScore: simResult.avgScore, fingers: simResult.fingers,
+      recommendation: buildRecommendation(simResult.avgScore, simResult.romDeg),
+    });
     triggerFeedback("시뮬레이션 스캔 완료!");
     setStatus("completed");
   };
@@ -465,201 +505,206 @@ try {
     return `Finger Score ${score}점으로 주의가 필요합니다. 무리한 손 사용을 줄이고, 즉시 따뜻한 물에 손을 5분간 담그신 후 전문의 상담을 권장합니다.`;
   }
 
-  const statusColor = { good: "#14b8a6", stable: "#f59e0b", warning: "#ef4444", danger: "#dc2626" };
-
-  if (status === "idle") return (
-    <div className="space-y-4">
-      <div className="text-center bg-white border border-slate-200 p-4 rounded-3xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase tracking-widest font-mono">Real MediaPipe AI Scan</p>
-        <h2 className="text-base font-bold text-slate-900">실제 손 관절 스캔</h2>
-        <p className="text-[10px] text-slate-500 leading-normal mt-1">MediaPipe HandLandmarker로 PIP 굴곡각·측면편위를 실시간 측정합니다.</p>
-      </div>
-      <div className="bg-slate-900 rounded-2xl p-8 flex flex-col items-center gap-4 border border-teal-500/20">
-        <div className="w-16 h-16 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center">
-          <Camera className="w-8 h-8 text-teal-400" />
-        </div>
-        <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br/>어떠한 민감 정보도 외부로 전송되지 않습니다.</p>
-        <button onClick={startScan} className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
-          MediaPipe 스캔 시작
-        </button>
-      </div>
-      <div className="bg-white border border-slate-200 p-3 rounded-2xl flex gap-3 text-[10px] text-slate-500 leading-relaxed">
-        <HelpCircle className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
-        <span>실내 밝은 조명 아래, 손바닥이 카메라를 향하도록 하면 가장 정확합니다. 카메라 권한이 없으면 시뮬레이션 모드로 대체됩니다.</span>
-      </div>
-    </div>
-  );
-
-  if (status === "loading") return (
-    <div className="flex flex-col items-center justify-center py-16 gap-4">
-      <div className="w-12 h-12 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-      <p className="text-xs text-slate-500">MediaPipe 모델 로딩 중...</p>
-    </div>
-  );
-
-  if (status === "simulation") return (
-    <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
-        <p className="text-xs font-bold text-amber-700">시뮬레이션 모드</p>
-        <p className="text-[10px] text-amber-600 mt-1">
-          {errorMessage || "카메라 접근이 불가하여 시뮬레이션 데이터로 시연합니다."}
-        </p>
-        <div className="flex gap-2 justify-center mt-3">
-          <button onClick={() => { setStatus("idle"); setErrorMessage(null); }}
-            className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">
-            다시 시도
-          </button>
-          <button onClick={runSimulation} className="bg-teal-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
-            시뮬레이션 스캔 실행
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (status === "completed" && scanResult) return (
-    <div className="space-y-4">
-      <div className="bg-white border border-teal-200 rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-teal-700 text-xs font-bold">
-            <Sparkles className="w-4 h-4 text-orange-500" />
-            스캔 분석 완료
-          </div>
-          <button onClick={() => { setStatus("idle"); setScanResult(null); stopCamera(); }}
-            className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
-            <RefreshCw className="w-3 h-3" /> 다시 측정
-          </button>
-        </div>
-        <div className="grid grid-cols-4 gap-2 mb-3">
-          {scanResult.fingers.map(f => (
-            <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-              <div className="text-[8px] text-slate-400 font-bold">{f.name}</div>
-              <div className="text-sm font-black text-teal-700 font-mono">{f.score}</div>
-              <div className="text-[7px] text-slate-400">{Math.round(f.flexion)}°</div>
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-            <div className="text-[8px] text-slate-400">ROM</div>
-            <div className="text-xs font-black font-mono">{scanResult.romDeg}°</div>
-          </div>
-          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-            <div className="text-[8px] text-slate-400">강직지수</div>
-            <div className="text-xs font-black font-mono">{scanResult.stiffnessMin}분</div>
-          </div>
-          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-            <div className="text-[8px] text-slate-400">VAS</div>
-            <div className="text-xs font-black text-orange-600 font-mono">{scanResult.painIndex}단계</div>
-          </div>
-        </div>
-        <div className="bg-teal-50 border border-teal-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
-          <strong className="text-slate-900">처방:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
-        </div>
-      </div>
-      {history.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-3">
-          <p className="text-[10px] font-bold text-slate-700 mb-2">최근 스캔 기록 (14회)</p>
-          <div className="flex gap-1 overflow-x-auto">
-            {history.slice(0,14).map((h, i) => (
-              <div key={i} className="shrink-0 text-center">
-                <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center text-[8px] font-black text-teal-700">{h.avgScore}</div>
-                <div className="text-[7px] text-slate-400">{new Date(h.ts).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric"})}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const restart = () => {
+    stopCamera();
+    setScanResult(null);
+    setErrorMessage(null);
+    setStatus("idle");
+  };
 
   const currentPose = POSE_GUIDE[poseIndex];
   const poseProgress = 1 - poseSecondsLeft / currentPose.duration;
   const ringR = 17;
   const ringCirc = 2 * Math.PI * ringR;
 
- // status === "ready" — live camera (풀화면)
-return (
-  <div style={{position:"fixed",inset:0,zIndex:200,background:"#000",display:"flex",flexDirection:"column"}}>
-    <div style={{position:"relative",flex:1,overflow:"hidden"}}>
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" playsInline webkit-playsinline="true" muted autoPlay style={{opacity:1}} />
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10 scale-x-[-1]" />
-        <div className="absolute inset-4 border border-dashed border-teal-500/30 rounded-xl pointer-events-none" />
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
 
-        {/* 스캐닝 레이저 스윕 - 스캔이 살아있다는 느낌을 주는 시각 효과 */}
-        <div className="absolute inset-x-0 top-0 h-1/3 pointer-events-none z-10 bg-gradient-to-b from-transparent via-teal-400/25 to-transparent animate-scan-sweep" />
+        <video
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+          playsInline
+          muted
+          autoPlay
+          style={{ opacity: isCameraActive ? 1 : 0, background: "#000" }}
+        />
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none z-10 scale-x-[-1]"
+          style={{ opacity: isCameraActive ? 1 : 0 }}
+        />
 
-        <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-20">
-          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors ${handDetected ? "bg-teal-500 text-slate-950" : "bg-slate-700 text-slate-400"}`}>
-            {handDetected ? "손 감지됨" : "손을 화면에 보여주세요"}
-          </span>
-          <span className="text-[9px] text-teal-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
-          </span>
-        </div>
+        {isCameraActive && (
+          <>
+            <div className="absolute inset-4 border border-dashed border-teal-500/30 rounded-xl pointer-events-none" />
+            <div className="absolute inset-x-0 top-0 h-1/3 pointer-events-none z-10 bg-gradient-to-b from-transparent via-teal-400/25 to-transparent animate-scan-sweep" />
+            <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-20">
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors ${handDetected ? "bg-teal-500 text-slate-950" : "bg-slate-700 text-slate-400"}`}>
+                {handDetected ? "손 감지됨" : "손을 화면에 보여주세요"}
+              </span>
+              <span className="text-[9px] text-teal-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
+              </span>
+            </div>
 
-        {/* 유도 동작 가이드 카드: 지금 어떤 손동작을 취해야 하는지 안내 */}
-        <div className="absolute top-9 left-2 right-2 z-20 bg-slate-950/85 backdrop-blur-sm rounded-xl p-2.5 flex items-center gap-2.5 border border-teal-500/20">
-          <div className="relative w-11 h-11 shrink-0">
-            <svg viewBox="0 0 40 40" className="absolute inset-0 w-full h-full -rotate-90">
-              <circle cx="20" cy="20" r={ringR} fill="none" stroke="#1e293b" strokeWidth="3" />
-              <circle cx="20" cy="20" r={ringR} fill="none" stroke="#2dd4bf" strokeWidth="3"
-                strokeDasharray={ringCirc}
-                strokeDashoffset={ringCirc * (1 - poseProgress)}
-                strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
-            </svg>
-            <PoseIcon poseId={currentPose.id} className="absolute inset-0 w-full h-full p-1.5 text-teal-300" />
-            <span className="absolute -bottom-1 -right-1 text-[8px] font-black text-teal-300 bg-slate-950 rounded-full w-4 h-4 flex items-center justify-center border border-teal-500/40">
-              {poseSecondsLeft}
-            </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
-            <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
-          </div>
-          <div className="flex gap-1 shrink-0">
-            {POSE_GUIDE.map((p, i) => (
-              <span key={p.id} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === poseIndex ? "bg-teal-400" : i < poseIndex ? "bg-teal-700" : "bg-slate-700"}`} />
-            ))}
-          </div>
-        </div>
-
-        {liveMetrics && (
-          <div className="absolute bottom-2 left-2 right-2 z-20 bg-slate-950/80 rounded-xl p-2 grid grid-cols-4 gap-1">
-            {liveMetrics.map(f => (
-              <div key={f.key} className="text-center">
-                <div className="text-[8px] text-slate-400">{f.name}</div>
-                <div className="text-[10px] font-black text-teal-400 font-mono">{Math.round(f.flexion)}°</div>
-                <div className="text-[7px] text-slate-500">{Math.round(f.deviation)}° {f.deviationDir === "radial" ? "요측" : "척측"}</div>
+            {status === "scanning" && (
+              <div className="absolute top-9 left-2 right-2 z-20 bg-slate-950/85 backdrop-blur-sm rounded-xl p-2.5 flex items-center gap-2.5 border border-teal-500/20">
+                <div className="relative w-11 h-11 shrink-0">
+                  <svg viewBox="0 0 40 40" className="absolute inset-0 w-full h-full -rotate-90">
+                    <circle cx="20" cy="20" r={ringR} fill="none" stroke="#1e293b" strokeWidth="3" />
+                    <circle cx="20" cy="20" r={ringR} fill="none" stroke="#2dd4bf" strokeWidth="3"
+                      strokeDasharray={ringCirc}
+                      strokeDashoffset={ringCirc * (1 - poseProgress)}
+                      strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
+                  </svg>
+                  <PoseIcon poseId={currentPose.id} className="absolute inset-0 w-full h-full p-1.5 text-teal-300" />
+                  <span className="absolute -bottom-1 -right-1 text-[8px] font-black text-teal-300 bg-slate-950 rounded-full w-4 h-4 flex items-center justify-center border border-teal-500/40">
+                    {poseSecondsLeft}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
+                  <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {POSE_GUIDE.map((p, i) => (
+                    <span key={p.id} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === poseIndex ? "bg-teal-400" : i < poseIndex ? "bg-teal-700" : "bg-slate-700"}`} />
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
+
+            {liveMetrics && (
+              <div className="absolute bottom-2 left-2 right-2 z-20 bg-slate-950/80 rounded-xl p-2 grid grid-cols-4 gap-1">
+                {liveMetrics.map(f => (
+                  <div key={f.key} className="text-center">
+                    <div className="text-[8px] text-slate-400">{f.name}</div>
+                    <div className="text-[10px] font-black text-teal-400 font-mono">{Math.round(f.flexion)}°</div>
+                    <div className="text-[7px] text-slate-500">{Math.round(f.deviation)}° {f.deviationDir === "radial" ? "요측" : "척측"}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {status === "idle" && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
+            <div className="text-center mb-2">
+              <p className="text-[9px] text-teal-400 uppercase tracking-widest font-mono">Real MediaPipe AI Scan</p>
+              <h2 className="text-base font-bold text-white">실제 손 관절 스캔</h2>
+              <p className="text-[10px] text-slate-400 leading-normal mt-1">MediaPipe HandLandmarker로 PIP 굴곡각·측면편위를 실시간 측정합니다.</p>
+            </div>
+            <div className="w-16 h-16 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center">
+              <Camera className="w-8 h-8 text-teal-400" />
+            </div>
+            <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />어떠한 민감 정보도 외부로 전송되지 않습니다.</p>
+            <button onClick={startScan} className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
+              MediaPipe 스캔 시작
+            </button>
+            <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
+              시뮬레이션으로 건너뛰기
+            </button>
+          </div>
+        )}
+
+        {status === "loading" && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-slate-950/95">
+            <div className="w-12 h-12 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-slate-300">카메라/AI 모델 준비 중...</p>
+          </div>
+        )}
+
+        {status === "simulation" && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/95 px-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center max-w-xs">
+              <p className="text-xs font-bold text-amber-700">시뮬레이션 모드</p>
+              <p className="text-[10px] text-amber-600 mt-1">
+                {errorMessage || "카메라 접근이 불가하여 시뮬레이션 데이터로 시연합니다."}
+              </p>
+              <div className="flex gap-2 justify-center mt-3">
+                <button onClick={restart} className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">
+                  다시 시도
+                </button>
+                <button onClick={runSimulation} className="bg-teal-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
+                  시뮬레이션 스캔 실행
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {status === "completed" && scanResult && (
+          <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/97 p-3">
+            <div className="bg-white border border-teal-200 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 text-teal-700 text-xs font-bold">
+                  <Sparkles className="w-4 h-4 text-orange-500" />
+                  스캔 분석 완료
+                </div>
+                <button onClick={restart} className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
+                  <RefreshCw className="w-3 h-3" /> 다시 측정
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {scanResult.fingers.map(f => (
+                  <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                    <div className="text-[8px] text-slate-400 font-bold">{f.name}</div>
+                    <div className="text-sm font-black text-teal-700 font-mono">{f.score}</div>
+                    <div className="text-[7px] text-slate-400">{Math.round(f.flexion)}°</div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                  <div className="text-[8px] text-slate-400">ROM</div>
+                  <div className="text-xs font-black font-mono">{scanResult.romDeg}°</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                  <div className="text-[8px] text-slate-400">강직지수</div>
+                  <div className="text-xs font-black font-mono">{scanResult.stiffnessMin}분</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                  <div className="text-[8px] text-slate-400">VAS</div>
+                  <div className="text-xs font-black text-orange-600 font-mono">{scanResult.painIndex}단계</div>
+                </div>
+              </div>
+              <div className="bg-teal-50 border border-teal-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
+                <strong className="text-slate-900">처방:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
+              </div>
+            </div>
+            {history.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-3 mt-3">
+                <p className="text-[10px] font-bold text-slate-700 mb-2">최근 스캔 기록 (14회)</p>
+                <div className="flex gap-1 overflow-x-auto">
+                  {history.slice(0, 14).map((h, i) => (
+                    <div key={i} className="shrink-0 text-center">
+                      <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center text-[8px] font-black text-teal-700">{h.avgScore}</div>
+                      <div className="text-[7px] text-slate-400">{new Date(h.ts).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
-      <div className="flex gap-2">
-        <button onClick={saveSnapshot} disabled={!handDetected}
-          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${handDetected ? "bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md" : "bg-slate-200 text-slate-400 cursor-not-allowed"}`}>
-          {justSaved ? "저장됨!" : "스냅샷 저장"}
-        </button>
-        <button onClick={() => { stopCamera(); setStatus("idle"); }}
-          className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all">
-          종료
-        </button>
-      </div>
-      {history.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl p-2">
-          <p className="text-[9px] text-slate-500 mb-1 font-bold">스캔 기록</p>
-          <div className="flex gap-1 overflow-x-auto">
-            {history.slice(0,14).map((h, i) => (
-              <div key={i} className="shrink-0 w-6 h-6 rounded bg-teal-100 flex items-center justify-center text-[8px] font-black text-teal-700">{h.avgScore}</div>
-            ))}
-          </div>
+
+      {status === "scanning" && (
+        <div className="flex gap-2 p-2 bg-slate-950">
+          <button onClick={saveSnapshot} disabled={!handDetected}
+            className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${handDetected ? "bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md" : "bg-slate-800 text-slate-500 cursor-not-allowed"}`}>
+            {justSaved ? "저장됨!" : "스냅샷 저장"}
+          </button>
+          <button onClick={restart} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all">
+            종료
+          </button>
         </div>
       )}
     </div>
   );
 }
-
 // ─────────────────────────────────────────────
 // AI COACH MODULE
 // ─────────────────────────────────────────────
