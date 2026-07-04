@@ -372,28 +372,16 @@ function HandScanEngine({ currentProfile, onScanCompleted, triggerFeedback }) {
     setErrorMessage(null);
     triggerFeedback("MediaPipe 모델을 불러오는 중...");
 
-    // 1) MediaPipe JS 번들 로드 (실패 원인: CDN 접속 불가, 버전 태그 문제)
-    let visionModule;
-    try {
-      visionModule = await import(
-        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/vision_bundle.mjs`
-      );
-    } catch (err) {
-      console.error("[JOINTRUN] MediaPipe 번들 로드 실패:", err);
-      setErrorMessage(`AI 모델 파일(MediaPipe)을 불러오지 못했습니다. (${err?.message || "네트워크 오류"})`);
-      setStatus("simulation");
-      triggerFeedback("AI 모델 로드 실패 — 시뮬레이션 모드로 전환합니다.");
-      return;
-    }
-
-    // 2) WASM 런타임 + HandLandmarker 모델 로드 (실패 원인: WASM/모델 파일 접근 불가)
-    let landmarker;
-    try {
-      const { FilesetResolver, HandLandmarker } = visionModule;
-      HandLandmarkerCtor = HandLandmarker;
-      const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-      landmarker = await createLandmarker(vision);
-    } catch (err) {
+    // 1+2) MediaPipe npm 패키지로 직접 로드 (Vite CDN dynamic import 문제 완전 해결)
+let landmarker;
+try {
+  const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
+  HandLandmarkerCtor = HandLandmarker;
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+  );
+  landmarker = await createLandmarker(vision);
+} catch (err) {
       console.error("[JOINTRUN] HandLandmarker 초기화 실패:", err);
       setErrorMessage(`AI 모델(WASM) 초기화에 실패했습니다. (${err?.message || "알 수 없는 오류"})`);
       setStatus("simulation");
