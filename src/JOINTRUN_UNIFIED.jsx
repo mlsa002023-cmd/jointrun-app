@@ -391,14 +391,25 @@ try {
     landmarkerRef.current = landmarker;
 
     // 3) 카메라 권한/스트림 (실패 원인: 권한 거부, 카메라 없음, HTTPS 아님)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: 640, height: 480 }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+    const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode: "user",
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+  }
+});
+if (videoRef.current) {
+  const v = videoRef.current;
+  v.srcObject = stream;
+  v.setAttribute("playsinline", "");
+  v.setAttribute("webkit-playsinline", "");
+  v.muted = true;
+  v.autoplay = true;
+  await new Promise((resolve, reject) => {
+    v.onloadedmetadata = () => v.play().then(resolve).catch(reject);
+    setTimeout(reject, 8000);
+  });
+}
     } catch (err) {
       console.error("[JOINTRUN] 카메라 접근 실패:", err);
       setErrorMessage(`카메라에 접근할 수 없습니다. (${err?.message || "권한 거부"})`);
@@ -567,11 +578,11 @@ try {
   const ringR = 17;
   const ringCirc = 2 * Math.PI * ringR;
 
-  // status === "ready" — live camera
-  return (
-    <div className="space-y-3">
-      <div className={`relative w-full aspect-video bg-slate-950 rounded-2xl overflow-hidden border transition-shadow duration-500 ${handDetected ? "border-teal-400/60 shadow-[0_0_24px_rgba(45,212,191,0.35)]" : "border-teal-500/30"}`}>
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-70 scale-x-[-1]" playsInline muted />
+ // status === "ready" — live camera (풀화면)
+return (
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{position:"relative",flex:1,overflow:"hidden"}}>
+        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" playsInline webkit-playsinline="true" muted autoPlay style={{opacity:1}} />
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10 scale-x-[-1]" />
         <div className="absolute inset-4 border border-dashed border-teal-500/30 rounded-xl pointer-events-none" />
 
