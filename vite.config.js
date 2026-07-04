@@ -16,6 +16,7 @@ export default defineConfig({
     sourcemap: false,
     target: "es2020",
     rollupOptions: {
+      external: [],
       output: {
         manualChunks: {
           react: ["react", "react-dom"],
@@ -25,5 +26,8 @@ export default defineConfig({
         },
       },
     },
+  },
+  optimizeDeps: {
+    exclude: ["@mediapipe/tasks-vision"],
   },
 });
