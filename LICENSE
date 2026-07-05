@@ -1,0 +1,21 @@
+Copyright (c) 2026 JOINTRUN. All Rights Reserved.
+
+This software and associated source code, documentation, and assets
+(collectively, the "Software") are the proprietary property of the
+copyright holder(s) of the JOINTRUN project.
+
+No part of the Software may be copied, modified, distributed, sublicensed,
+or used, in whole or in part, without the prior written permission of the
+copyright holder(s).
+
+This Software is provided for internal development and evaluation purposes
+only. Unauthorized use, reproduction, or distribution is strictly prohibited
+and may result in civil and criminal penalties.
+
+---
+
+Note: This is a default "All Rights Reserved" proprietary license, chosen
+because JOINTRUN is intended as a commercial product rather than an open
+source project. If you intend to open-source part or all of this codebase,
+replace this file with an appropriate OSS license (e.g. MIT, Apache-2.0)
+before publishing the repository publicly.
