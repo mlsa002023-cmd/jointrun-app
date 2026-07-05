@@ -352,6 +352,9 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
                 <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
+                {poseRetryMsg && (
+  <p className="text-[9px] text-amber-300 mt-1 font-bold">{poseRetryMsg}</p>
+)}
               </div>
               <div className="flex gap-1 shrink-0">
                 {POSE_GUIDE.map((p, i) => (
