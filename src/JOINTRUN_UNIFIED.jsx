@@ -26,7 +26,7 @@ import {
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import AuthScreen from "./components/AuthScreen";
 import { saveScanResult, getScanHistory, saveCheckIn, saveProfileSnapshot, getProfileSnapshot } from "./lib/firestore";
-import MotionScanPage from "./components/scan/MotionScanPage";
+import MotionScanPage from "./components/MotionScanPage";
 // ─────────────────────────────────────────────
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
