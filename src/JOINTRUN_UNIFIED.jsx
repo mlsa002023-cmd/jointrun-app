@@ -31,39 +31,6 @@ import MotionScanPage from "./components/MotionScanPage";
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
 
-// 20초 스캔 동안 순환하는 유도 동작. 각 동작이 펴짐/굽힘/미세조절 각도를
-// 뚜렷하게 드러내도록 설계 — ROM 측정 신뢰도와 사용자 몰입도를 동시에 높임.
-const POSE_GUIDE = [
-  { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
-  { id: "ok",     label: "OK 사인",     instruction: "엄지와 검지를 붙여 OK 모양을 만들어 주세요", sub: "정밀 조절력 측정", duration: 7 },
-  { id: "fist",   label: "가볍게 쥐기", instruction: "주먹을 편안하게 살짝 쥐어 주세요", sub: "최대 굴곡각(굽힘) 측정", duration: 6 },
-];
-
-  if (poseId === "fist") {
-    return (
-      <svg viewBox="0 0 64 64" className={className} fill="none">
-        <rect x="16" y="26" width="32" height="24" rx="10" stroke={stroke} strokeWidth="3" />
-        <path d="M24 26 V18" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M32 26 V16" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M40 26 V18" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M14 36 Q10 38 12 44" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  // spread (default)
-  return (
-    <svg viewBox="0 0 64 64" className={className} fill="none">
-      <path d="M32 58 Q18 58 16 44 L14 30" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M20 30 L18 12" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M28 28 L27 8" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M36 28 L38 8" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M44 30 L48 12" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M50 34 L56 22" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      <path d="M32 58 Q46 58 48 44 L50 34" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 const PATIENT_PROFILES_DEFAULT = [
   {
     id: "hairdresser", name: "김영희", age: 58, gender: "여성",
@@ -798,12 +765,12 @@ useEffect(() => {
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
-                  <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setProfiles(ps => ps.map(x => x.id === p.id ? p : x))} onCheckIn={handleCheckIn} />
+                  <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setUserProfile(p)} onCheckIn={handleCheckIn} />
                 </div>
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
-              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} selectedProfileId={selectedId} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
+              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
               {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
               {activeTab === "premium" && <CommunityModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
 
