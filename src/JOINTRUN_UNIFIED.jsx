@@ -31,18 +31,6 @@ import { saveScanResult, getScanHistory, saveCheckIn, saveProfileSnapshot, getPr
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
 
-// MediaPipe — npm 패키지로 설치 (CDN dynamic import 제거)
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-
-const HAND_CONNECTIONS = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [5,9],[9,10],[10,11],[11,12],
-  [9,13],[13,14],[14,15],[15,16],
-  [13,17],[17,18],[18,19],[19,20],
-  [0,17],
-];
-
 // 20초 스캔 동안 순환하는 유도 동작. 각 동작이 펴짐/굽힘/미세조절 각도를
 // 뚜렷하게 드러내도록 설계 — ROM 측정 신뢰도와 사용자 몰입도를 동시에 높임.
 const POSE_GUIDE = [
@@ -51,21 +39,6 @@ const POSE_GUIDE = [
   { id: "fist",   label: "가볍게 쥐기", instruction: "주먹을 편안하게 살짝 쥐어 주세요", sub: "최대 굴곡각(굽힘) 측정", duration: 6 },
 ];
 
-// 포즈별 미니 라인아트 아이콘. 실사 이미지 없이도 어떤 손 모양을 취해야 하는지
-// 한눈에 전달되도록 각 동작의 손가락 배치를 단순화해 표현.
-function PoseIcon({ poseId, className = "" }) {
-  const stroke = "currentColor";
-  if (poseId === "ok") {
-    return (
-      <svg viewBox="0 0 64 64" className={className} fill="none">
-        <circle cx="24" cy="34" r="10" stroke={stroke} strokeWidth="3" />
-        <path d="M38 20 L38 40" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M46 22 L46 42" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M53 26 L53 44" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-        <path d="M18 48 Q32 56 50 50" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    );
-  }
   if (poseId === "fist") {
     return (
       <svg viewBox="0 0 64 64" className={className} fill="none">
@@ -164,46 +137,6 @@ const BLUEPRINT_SECTIONS = [
   { id: 10, title: "임상 타당성 로드맵", subtitle: "Clinical Validation", content: `Phase 1 (현재): 알고리즘 개발 및 소규모 사용자 테스트\nPhase 2 (6개월): IRB 승인 하 재활의학과 파일럿 (n=50)\nPhase 3 (12개월): 다기관 임상 연구 (n=200), SCI 논문 투고\nPhase 4 (18개월): MFDS 의료기기 허가 신청 (소프트웨어 의료기기 SaMD)\n\n주요 KPI: Morning Stiffness 감소 20%, Finger Score 개선 15%, 환자 순응도 85% 이상` },
 ];
 
-// ─────────────────────────────────────────────
-// HAND BIOMECHANICS (순수 함수)
-// ─────────────────────────────────────────────
-
-function sub(a, b) { return { x: a.x-b.x, y: a.y-b.y, z: a.z-b.z }; }
-function dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
-function cross(a, b) { return { x: a.y*b.z-a.z*b.y, y: a.z*b.x-a.x*b.z, z: a.x*b.y-a.y*b.x }; }
-function norm(v) { const m = Math.sqrt(dot(v,v)); return m<1e-9?{x:0,y:0,z:1}:{x:v.x/m,y:v.y/m,z:v.z/m}; }
-function angleDeg(a, b) { return Math.acos(Math.max(-1, Math.min(1, dot(norm(a), norm(b)))))*(180/Math.PI); }
-
-function analyzePIPJoint(wl, mcp, pip, dip) {
-  const proximal = sub(wl[pip], wl[mcp]);
-  const distal   = sub(wl[dip], wl[pip]);
-  const palmNorm = norm(cross(sub(wl[5],wl[0]), sub(wl[17],wl[0])));
-  const e1 = norm(proximal);
-  const e2 = norm(sub(palmNorm, {x:dot(palmNorm,e1)*e1.x,y:dot(palmNorm,e1)*e1.y,z:dot(palmNorm,e1)*e1.z}));
-  const e3 = cross(e1, e2);
-  const fx = dot(distal, e1);
-  const fy = dot(distal, e2);
-  const fz = dot(distal, e3);
-  const flexion = Math.atan2(fy, fx)*(180/Math.PI);
-  const deviation = Math.atan2(fz, fx)*(180/Math.PI);
-  const direction = fz > 0 ? "radial" : "ulnar";
-  return { flexion: Math.max(0, flexion), deviation: Math.abs(deviation), deviationDir: direction };
-}
-
-const FINGER_CHAINS = {
-  index:  { mcp:5,  pip:6,  dip:7,  name:"검지" },
-  middle: { mcp:9,  pip:10, dip:11, name:"중지" },
-  ring:   { mcp:13, pip:14, dip:15, name:"약지" },
-  pinky:  { mcp:17, pip:18, dip:19, name:"소지" },
-};
-
-function analyzeAllFingers(wl) {
-  return Object.entries(FINGER_CHAINS).map(([key, c]) => {
-    const r = analyzePIPJoint(wl, c.mcp, c.pip, c.dip);
-    const score = Math.round(Math.min(100, Math.max(0, (r.flexion/80)*60 + (1-Math.min(r.deviation,10)/10)*40)));
-    return { key, name: c.name, ...r, score };
-  });
-}
 
 // ─────────────────────────────────────────────
 // ANTHROPIC AI COACH
