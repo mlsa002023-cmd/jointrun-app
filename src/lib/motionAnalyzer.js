@@ -71,3 +71,74 @@ export function buildRecommendation(score, rom) {
   }
   return `Finger Score ${score}점으로 주의가 필요합니다. 무리한 손 사용을 줄이고, 즉시 따뜻한 물에 손을 5분간 담그신 후 전문의 상담을 권장합니다.`;
 }
+/** 배열의 중앙값을 계산한다. 단일 프레임 노이즈에 흔들리지 않게 하기 위한 핵심 함수. */
+function median(arr) {
+  if (!arr.length) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * 여러 프레임에서 얻은 analyzeAllFingers() 결과 배열을 받아,
+ * 손가락별 굴곡각/편위각의 중앙값으로 대표값을 만든다.
+ * → 재현성(같은 사람 반복 측정 시 값 안정성)의 핵심 해법.
+ */
+export function aggregateFingerSamples(samplesArray) {
+  if (!samplesArray || !samplesArray.length) return null;
+  const keys = samplesArray[0].map((f) => f.key);
+  return keys.map((key, idx) => {
+    const flexions = samplesArray.map((s) => s[idx].flexion);
+    const deviations = samplesArray.map((s) => s[idx].deviation);
+    const flexion = median(flexions);
+    const deviation = median(deviations);
+    const score = Math.round(
+      Math.min(100, Math.max(0, (flexion / 80) * 60 + (1 - Math.min(deviation, 10) / 10) * 40))
+    );
+    return {
+      key,
+      name: samplesArray[0][idx].name,
+      flexion,
+      deviation,
+      deviationDir: samplesArray[0][idx].deviationDir,
+      score,
+    };
+  });
+}
+
+/**
+ * 엄지 끝(4)-검지 끝(8) 거리를 손 크기(손목-중지 MCP 거리)로 정규화한 값.
+ * OK 사인일수록 작아진다. worldLandmarks(월드 좌표)를 넣어야 손 크기 무관하게 비교 가능.
+ */
+export function computeOkSignMetric(wl) {
+  const thumbTip = wl[4];
+  const indexTip = wl[8];
+  const wrist = wl[0];
+  const middleMcp = wl[9];
+  const handScale =
+    Math.sqrt(
+      (middleMcp.x - wrist.x) ** 2 + (middleMcp.y - wrist.y) ** 2 + (middleMcp.z - wrist.z) ** 2
+    ) || 1e-6;
+  const dist = Math.sqrt(
+    (thumbTip.x - indexTip.x) ** 2 + (thumbTip.y - indexTip.y) ** 2 + (thumbTip.z - indexTip.z) ** 2
+  );
+  return dist / handScale;
+}
+
+/**
+ * 집계된 손가락 결과가 실제로 해당 pose_id 모양에 부합하는지 검증한다.
+ * false면 호출부에서 "다시 해주세요" 피드백을 주고 재시도시켜야 한다.
+ * 임계값(80°, 20°, 0.4)은 초기 추정치 — 실사용자 테스트로 보정 필요.
+ */
+export function validatePose(poseId, aggregatedFingers, worldLandmarksForOk) {
+  if (!aggregatedFingers || aggregatedFingers.length === 0) return false;
+  const avgFlexion =
+    aggregatedFingers.reduce((s, f) => s + f.flexion, 0) / aggregatedFingers.length;
+  if (poseId === "fist") return avgFlexion > 80;
+  if (poseId === "spread") return avgFlexion < 20;
+  if (poseId === "ok") {
+    if (!worldLandmarksForOk) return false;
+    return computeOkSignMetric(worldLandmarksForOk) < 0.4;
+  }
+  return true;
+}
