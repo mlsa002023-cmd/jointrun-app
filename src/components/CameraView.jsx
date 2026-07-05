@@ -78,16 +78,32 @@ const CameraView = forwardRef(function CameraView(
       // 후면 카메라가 없는 기기(노트북 등)에서는 getUserMedia가 실패할 수 있으므로
       // environment 시도 → 실패 시 user(전면)로 자동 폴백.
       let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-      } catch (envErr) {
-        console.warn("[CameraView] 후면 카메라 사용 불가, 전면으로 폴백:", envErr);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-      }
+try {
+  // exact 대신 ideal — 너무 엄격한 제약으로 인한 OverconstrainedError를 피한다.
+  // 해상도는 별도 시도로 분리해서, 해상도 문제로 facingMode까지 실패하지 않게 한다.
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+  });
+  const settings = stream.getVideoTracks()[0]?.getSettings?.();
+  if (settings?.facingMode && settings.facingMode !== "environment") {
+    // ideal 요청이 받아들여졌지만 실제로는 전면이 잡힌 경우 — deviceId로 재시도.
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const backCam = devices.find(
+      (d) => d.kind === "videoinput" && /back|rear|environment/i.test(d.label)
+    );
+    if (backCam) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: backCam.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+    }
+  }
+} catch (envErr) {
+  console.warn("[CameraView] 후면 카메라 사용 불가, 전면으로 폴백:", envErr);
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+  });
+}
       streamRef.current = stream;
 
       // 폴백이 일어났을 수 있으므로, 요청한 값이 아니라 실제로 잡힌 트랙의 facingMode를 확인한다.
