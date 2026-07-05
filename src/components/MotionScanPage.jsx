@@ -92,6 +92,7 @@ function clearCanvas(canvas) {
 export default function MotionScanPage({ currentProfile, onScanCompleted, triggerFeedback }) {
   const cameraRef = useRef(null);
   const rafRef = useRef(null);
+  const finishScanRef = useRef(null); // 4단계에서 실제 함수를 채워 넣을 자리
   const lastVideoTimeRef = useRef(-1);
   const latestFingersRef = useRef(null);
   const sampleBufferRef = useRef([]); // { fingers, worldLandmarks, ts } 최근 프레임 버퍼 — 포즈 검증/집계에 사용
