@@ -267,25 +267,66 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     setPhase("idle");
   };
 
-  const saveSnapshot = () => {
-    if (!latestFingersRef.current) return;
-    const fingers = latestFingersRef.current;
-    const { avgScore, avgFlexion } = summarizeFingers(fingers);
-    const entry = { ts: Date.now(), avgScore, avgFlexion, fingers };
-    setHistory((prev) => [entry, ...prev].slice(0, 14));
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1200);
+  /**
+   * 3개 포즈(spread/ok/fist) 대표값이 모두 확정되면 호출된다.
+   * 진짜 ROM(가동 범위) = 최대 신전(spread, 굴곡각이 가장 작음) ~ 최대 굴곡(fist, 굴곡각이 가장 큼) 차이.
+   * 손가락별로 fist - spread 차이를 ROM으로 계산하고, 4개 손가락 평균을 대표 ROM으로 쓴다.
+   */
+  const finishScan = useCallback(
+    (confirmedResults) => {
+      const { spread, ok, fist } = confirmedResults;
+      if (!spread || !ok || !fist) return; // 방어: 셋 다 있어야 계산 가능
 
-    const stiffnessMin = Math.round((100 - avgScore) * 0.5);
-    const painIndex = Math.round((100 - avgScore) / 15);
-    const result = { romDeg: avgFlexion, stiffnessMin, painIndex, fingers, avgScore };
-    setScanResult(result);
-    onScanCompleted({ ...result, recommendation: buildRecommendation(avgScore, avgFlexion) });
-    triggerFeedback(`스캔 저장 완료! Finger Score: ${avgScore}점`);
+      const fingerKeys = spread.map((f) => f.key);
+      const perFinger = fingerKeys.map((key, idx) => {
+        const s = spread[idx];
+        const f = fist[idx];
+        const rom = Math.max(0, f.flexion - s.flexion); // 굴곡각 차이 = 가동 범위
+        const score = Math.round((f.score + s.score + ok[idx].score) / 3);
+        return { key, name: s.name, rom: Math.round(rom), score };
+      });
 
-    stopDetectLoop();
-    setPhase("completed");
-  };
+      const avgRom = Math.round(
+        perFinger.reduce((sum, f) => sum + f.rom, 0) / perFinger.length
+      );
+      const avgScore = Math.round(
+        perFinger.reduce((sum, f) => sum + f.score, 0) / perFinger.length
+      );
+      const stiffnessMin = Math.round((100 - avgScore) * 0.5);
+      const painIndex = Math.round((100 - avgScore) / 15);
+
+      const result = {
+        romDeg: avgRom,
+        stiffnessMin,
+        painIndex,
+        avgScore,
+        fingers: perFinger.map((f) => ({
+          key: f.key,
+          name: f.name,
+          score: f.score,
+          flexion: f.rom, // 결과 화면(scanResult.fingers)에서 f.flexion으로 표시하던 부분 호환용
+          deviation: 0,
+          deviationDir: "ulnar",
+        })),
+      };
+
+      const entry = { ts: Date.now(), avgScore, avgFlexion: avgRom, fingers: result.fingers };
+      setHistory((prev) => [entry, ...prev].slice(0, 14));
+
+      setScanResult(result);
+      onScanCompleted({ ...result, recommendation: buildRecommendation(avgScore, avgRom) });
+      triggerFeedback(`스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`);
+
+      stopDetectLoop();
+      setPhase("completed");
+    },
+    [onScanCompleted, triggerFeedback, stopDetectLoop]
+  );
+
+  // evaluatePoseAndAdvance(3단계)에서 이 ref를 통해 finishScan을 호출한다.
+  useEffect(() => {
+    finishScanRef.current = finishScan;
+  }, [finishScan]);
 
   const runSimulation = () => {
     const simResult = {
