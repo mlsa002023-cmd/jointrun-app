@@ -16,8 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, Sparkles } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
-import { analyzeAllFingers, summarizeFingers, buildRecommendation } from "../lib/motionAnalyzer";
-
+import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose } from "../lib/motionAnalyzer";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
