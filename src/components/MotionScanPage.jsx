@@ -94,6 +94,8 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const rafRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
   const latestFingersRef = useRef(null);
+  const sampleBufferRef = useRef([]); // { fingers, worldLandmarks, ts } 최근 프레임 버퍼 — 포즈 검증/집계에 사용
+  const SAMPLE_WINDOW_MS = 1500; // 마지막 1.5초 구간만 대표값 계산에 사용 (그 이전 프레임은 자동 폐기)
 
   // phase: idle | camera_starting | ai_loading | scanning | camera_error | ai_error | completed
   const [phase, setPhase] = useState("idle");
@@ -155,9 +157,19 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       const result = detectHands(video, performance.now());
       if (result?.landmarks?.length > 0) {
         setHandDetected(true);
-        const fingers = analyzeAllFingers(result.worldLandmarks[0]);
+        const worldLandmarks = result.worldLandmarks[0];
+        const fingers = analyzeAllFingers(worldLandmarks);
         latestFingersRef.current = fingers;
         setLiveMetrics(fingers);
+
+        // 최근 프레임을 버퍼에 쌓고, 윈도우(1.5초) 밖의 오래된 샘플은 제거한다.
+        // 포즈 판정·최종 대표값은 이 버퍼의 최근 구간 중앙값만 사용한다 — 단일 프레임 노이즈 방지.
+        const now = performance.now();
+        sampleBufferRef.current.push({ fingers, worldLandmarks, ts: now });
+        sampleBufferRef.current = sampleBufferRef.current.filter(
+          (s) => now - s.ts <= SAMPLE_WINDOW_MS
+        );
+
         drawSkeleton(result.landmarks[0], canvas, video.videoWidth || 640, video.videoHeight || 480);
       } else {
         setHandDetected(false);
@@ -167,7 +179,6 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     }
     rafRef.current = requestAnimationFrame(detectLoop);
   }, []);
-
   // ── CameraView가 실제로 프레임을 그리기 시작하면(onReady) AI를 초기화하고 루프 시작 ──
   const handleCameraReady = useCallback(async () => {
     setPhase("ai_loading");
