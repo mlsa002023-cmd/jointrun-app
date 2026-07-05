@@ -1,5 +1,6 @@
 # JOINTRUN — Movement Intelligence Platform
 
+<<<<<<< HEAD
 > AI 기반 근골격계 디지털 헬스케어 플랫폼
 
 MediaPipe HandLandmarker + Anthropic AI Coach + Firebase Auth 기반의
@@ -16,6 +17,10 @@ MediaPipe HandLandmarker + Anthropic AI Coach + Firebase Auth 기반의
 | 변경 이력 | [CHANGELOG.md](./CHANGELOG.md) 참고 |
 | 기여 방법 / 브랜치 전략 / 커밋 규칙 | [CONTRIBUTING.md](./CONTRIBUTING.md) 참고 |
 | 라이선스 | [LICENSE](./LICENSE) 참고 |
+=======
+AI 기반 손가락 관절 건강 모니터링 플랫폼.
+MediaPipe HandLandmarker + Anthropic AI Coach + Firebase Auth 통합.
+>>>>>>> origin/main
 
 ---
 
@@ -24,7 +29,11 @@ MediaPipe HandLandmarker + Anthropic AI Coach + Firebase Auth 기반의
 수정된 문제 3가지:
 
 1. Firebase 환경변수 없을 때 앱 전체 crash → 데모 모드 폴백으로 해결
+<<<<<<< HEAD
 2. AuthContext가 Firebase crash에 의존 → 독립적 동작으로 해결
+=======
+2. AuthContext가 Firebase crash에 의존 → 독립적 동작으로 해결  
+>>>>>>> origin/main
 3. Anthropic API 헤더 누락 → `anthropic-dangerous-direct-browser-access` 헤더 추가
 
 ---
@@ -96,6 +105,7 @@ Vercel 대시보드 → Settings → Environment Variables에서
 - Recharts
 - lucide-react
 - PWA (manifest + service worker)
+<<<<<<< HEAD
 
 ---
 
@@ -119,3 +129,5 @@ src/
 이 프로젝트는 브랜치 전략(`main`/`develop`/`feature/*`/`release/*`/`hotfix/*`)과
 커밋 컨벤션(`feat:`, `fix:`, `refactor:` 등)을 따릅니다.
 자세한 내용은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 확인하세요.
+=======
+>>>>>>> origin/main
