@@ -26,7 +26,7 @@ import {
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import AuthScreen from "./components/AuthScreen";
 import { saveScanResult, getScanHistory, saveCheckIn, saveProfileSnapshot, getProfileSnapshot } from "./lib/firestore";
-
+import MotionScanPage from "./components/scan/MotionScanPage";
 // ─────────────────────────────────────────────
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
@@ -801,7 +801,7 @@ useEffect(() => {
                   <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setProfiles(ps => ps.map(x => x.id === p.id ? p : x))} onCheckIn={handleCheckIn} />
                 </div>
               )}
-              {activeTab === "scan" && <HandScanEngine currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} />}
+              {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} selectedProfileId={selectedId} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
               {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
