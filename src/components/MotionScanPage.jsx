@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RefreshCw, Sparkles, Compass } from "lucide-react";
+import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose } from "../lib/motionAnalyzer";
@@ -112,17 +112,54 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const [poseResults, setPoseResults] = useState({}); // { spread: {...}, ok: {...}, fist: {...} } 포즈별 확정된 대표값
   const poseIndexRef = useRef(0);
   const poseResultsRef = useRef({}); // finishScan에서 최신값을 바로 읽기 위한 ref (state는 비동기라 못 믿음)
+  const poseHoldStartRef = useRef(null); // 현재 포즈가 "연속으로" 올바르게 유지되기 시작한 시각
+  const poseConfirmedRef = useRef(false); // 이 포즈 슬롯이 이미 확정 처리됐는지 (중복 실행 방지)
+  const confirmPoseRef = useRef(null); // detectLoop(rAF 재귀 클로저)에서 최신 confirmPose를 안전하게 호출하기 위한 ref
+  const [poseJustConfirmed, setPoseJustConfirmed] = useState(false); // "완료!" 체크마크 표시용
+  const HOLD_MS = 600; // 이 시간(0.6초) 동안 연속으로 올바른 포즈가 유지되면 타이머를 기다리지 않고 즉시 확정
 
   const cameraActive = phase === "camera_starting" || phase === "ai_loading" || phase === "scanning";
 
-  // ── 유도 동작 타이머: scanning 중에만 순환 ──
-  // ── 포즈 구간 종료 시 호출: 버퍼의 최근 샘플로 검증하고, 통과하면 다음 포즈로, 실패하면 같은 포즈 재시도 ──
+  // ── 포즈가 확정됐을 때 공통으로 실행되는 로직 ──
+  // 두 군데에서 호출됨: (1) detectLoop에서 0.6초 연속 유지가 감지된 즉시, (2) 타이머 만료 시 마지막 안전망으로.
+  // 체크마크를 400ms만 보여준 뒤 다음 포즈로 넘어가서, 뚝 끊기지 않고 자연스러운 전환처럼 느껴지게 한다.
+  const confirmPose = useCallback((aggregated) => {
+    if (poseConfirmedRef.current) return; // 이미 확정 처리 중이면 중복 실행 방지
+    poseConfirmedRef.current = true;
+
+    const pose = POSE_GUIDE[poseIndexRef.current];
+    setPoseRetryMsg(null);
+    setPoseJustConfirmed(true);
+    triggerFeedback(`${pose.label} 완료!`);
+
+    const confirmed = { ...poseResultsRef.current, [pose.id]: aggregated };
+    poseResultsRef.current = confirmed;
+    setPoseResults(confirmed);
+
+    setTimeout(() => {
+      setPoseJustConfirmed(false);
+      const nextIdx = poseIndexRef.current + 1;
+      if (nextIdx >= POSE_GUIDE.length) {
+        // 3개 포즈 모두 완료 — "완료되었습니다" 최종 화면으로 전환
+        finishScanRef.current?.(confirmed);
+        return;
+      }
+      poseIndexRef.current = nextIdx;
+      setPoseIndex(nextIdx);
+      setPoseSecondsLeft(POSE_GUIDE[nextIdx].duration);
+      sampleBufferRef.current = [];
+      poseHoldStartRef.current = null;
+      poseConfirmedRef.current = false;
+    }, 400);
+  }, [triggerFeedback]);
+
+  // ── 안전망: 0.6초 연속 유지가 한 번도 안 잡히고 타이머(7초/7초/6초)가 다 끝났을 때만 여기로 온다 ──
   const evaluatePoseAndAdvance = useCallback(() => {
+    if (poseConfirmedRef.current) return; // hold 방식으로 이미 확정된 경우 중복 처리 방지
     const pose = POSE_GUIDE[poseIndexRef.current];
     const buffer = sampleBufferRef.current;
 
     if (buffer.length < 5) {
-      // 이 구간 동안 손이 거의 안 잡혔음 — 검증 자체가 무의미하므로 바로 재시도
       setPoseRetryMsg("손이 잘 안 보였어요. 카메라 앞에 손을 다시 비춰주세요.");
       setPoseSecondsLeft(pose.duration);
       return;
@@ -140,24 +177,13 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       return;
     }
 
-    // 검증 통과 — 이 포즈의 대표값 확정
-    setPoseRetryMsg(null);
-    const confirmed = { ...poseResultsRef.current, [pose.id]: aggregated };
-    poseResultsRef.current = confirmed;
-    setPoseResults(confirmed);
-    triggerFeedback(`${pose.label} 측정 완료!`);
+    confirmPose(aggregated);
+  }, [confirmPose, triggerFeedback]);
 
-    const nextIdx = poseIndexRef.current + 1;
-    if (nextIdx >= POSE_GUIDE.length) {
-      // 3개 포즈 모두 완료 — 4단계에서 만들 finishScan 호출 지점 (지금은 자리만 잡아둠)
-      finishScanRef.current?.(confirmed);
-      return;
-    }
-    poseIndexRef.current = nextIdx;
-    setPoseIndex(nextIdx);
-    setPoseSecondsLeft(POSE_GUIDE[nextIdx].duration);
-    sampleBufferRef.current = []; // 다음 포즈를 위해 버퍼 초기화
-  }, [triggerFeedback]);
+  // confirmPose를 ref에 계속 최신 상태로 반영 — detectLoop(rAF 재귀 클로저) 안에서 안전하게 호출하기 위함
+  useEffect(() => {
+    confirmPoseRef.current = confirmPose;
+  }, [confirmPose]);
 
   useEffect(() => {
     if (phase !== "scanning") return;
@@ -219,6 +245,25 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         sampleBufferRef.current = sampleBufferRef.current.filter(
           (s) => now - s.ts <= SAMPLE_WINDOW_MS
         );
+
+        // ── 연속 유지 체크: 최근 0.6초 동안 계속 올바른 포즈였다면, 7초/6초 타이머를 기다리지 않고 즉시 확정한다.
+        // 이게 "인식되면 바로바로 다음 동작으로 넘어간다"의 핵심이다.
+        if (!poseConfirmedRef.current) {
+          const holdWindow = sampleBufferRef.current.filter((s) => now - s.ts <= HOLD_MS);
+          if (holdWindow.length >= 3) {
+            const holdAggregated = aggregateFingerSamples(holdWindow.map((s) => s.fingers));
+            const holdWorld = holdWindow[holdWindow.length - 1].worldLandmarks;
+            const holdValid = validatePose(POSE_GUIDE[poseIndexRef.current].id, holdAggregated, holdWorld);
+            if (holdValid) {
+              if (poseHoldStartRef.current == null) poseHoldStartRef.current = now;
+              if (now - poseHoldStartRef.current >= HOLD_MS) {
+                confirmPoseRef.current?.(holdAggregated);
+              }
+            } else {
+              poseHoldStartRef.current = null; // 중간에 흐트러지면 유지 시간 리셋 — 순간적인 오검출 방지
+            }
+          }
+        }
 
         drawSkeleton(result.landmarks[0], canvas, video.videoWidth || 640, video.videoHeight || 480);
       } else {
@@ -391,11 +436,19 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
-                <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
-                {poseRetryMsg && (
-  <p className="text-[9px] text-amber-300 mt-1 font-bold">{poseRetryMsg}</p>
-)}
+                {poseJustConfirmed ? (
+                  <p className="text-[12px] font-black text-teal-300 flex items-center gap-1 animate-pulse">
+                    <Check className="w-3.5 h-3.5" /> 완료되었습니다!
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
+                    <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
+                  </>
+                )}
+                {poseRetryMsg && !poseJustConfirmed && (
+                  <p className="text-[9px] text-amber-300 mt-1 font-bold">{poseRetryMsg}</p>
+                )}
               </div>
               <div className="flex gap-1 shrink-0">
                 {POSE_GUIDE.map((p, i) => (
