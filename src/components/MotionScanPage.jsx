@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RefreshCw, Sparkles } from "lucide-react";
+import { Camera, RefreshCw, Sparkles, Compass } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose } from "../lib/motionAnalyzer";
@@ -89,7 +89,7 @@ function clearCanvas(canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-export default function MotionScanPage({ currentProfile, onScanCompleted, triggerFeedback }) {
+export default function MotionScanPage({ currentProfile, onScanCompleted, triggerFeedback, setActiveTab }) {
   const cameraRef = useRef(null);
   const rafRef = useRef(null);
   const finishScanRef = useRef(null); // 4단계에서 실제 함수를 채워 넣을 자리
@@ -485,9 +485,14 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                   <Sparkles className="w-4 h-4 text-orange-500" />
                   스캔 분석 완료
                 </div>
-                <button onClick={restart} className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
-                  <RefreshCw className="w-3 h-3" /> 다시 측정
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={restart} className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
+                    <RefreshCw className="w-3 h-3" /> 다시 측정
+                  </button>
+                  <button onClick={() => setActiveTab?.("home")} className="text-[10px] text-teal-600 hover:text-teal-800 flex items-center gap-1 font-bold">
+                    <Compass className="w-3 h-3" /> 홈으로
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-4 gap-2 mb-3">
                 {scanResult.fingers.map((f) => (
