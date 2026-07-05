@@ -535,12 +535,8 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
 
       {phase === "scanning" && (
         <div className="flex gap-2 p-2 bg-slate-950">
-          <button onClick={saveSnapshot} disabled={!handDetected}
-            className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${handDetected ? "bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md" : "bg-slate-800 text-slate-500 cursor-not-allowed"}`}>
-            {justSaved ? "저장됨!" : "스냅샷 저장"}
-          </button>
-          <button onClick={restart} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all">
-            종료
+          <button onClick={restart} className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all">
+            스캔 종료
           </button>
         </div>
       )}
