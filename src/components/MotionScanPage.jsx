@@ -107,29 +107,78 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const [scanResult, setScanResult] = useState(null);
   const [poseIndex, setPoseIndex] = useState(0);
   const [poseSecondsLeft, setPoseSecondsLeft] = useState(POSE_GUIDE[0].duration);
+  const [poseRetryMsg, setPoseRetryMsg] = useState(null); // "다시 해주세요" 피드백
+  const [poseResults, setPoseResults] = useState({}); // { spread: {...}, ok: {...}, fist: {...} } 포즈별 확정된 대표값
   const poseIndexRef = useRef(0);
+  const poseResultsRef = useRef({}); // finishScan에서 최신값을 바로 읽기 위한 ref (state는 비동기라 못 믿음)
 
   const cameraActive = phase === "camera_starting" || phase === "ai_loading" || phase === "scanning";
 
   // ── 유도 동작 타이머: scanning 중에만 순환 ──
+  // ── 포즈 구간 종료 시 호출: 버퍼의 최근 샘플로 검증하고, 통과하면 다음 포즈로, 실패하면 같은 포즈 재시도 ──
+  const evaluatePoseAndAdvance = useCallback(() => {
+    const pose = POSE_GUIDE[poseIndexRef.current];
+    const buffer = sampleBufferRef.current;
+
+    if (buffer.length < 5) {
+      // 이 구간 동안 손이 거의 안 잡혔음 — 검증 자체가 무의미하므로 바로 재시도
+      setPoseRetryMsg("손이 잘 안 보였어요. 카메라 앞에 손을 다시 비춰주세요.");
+      setPoseSecondsLeft(pose.duration);
+      return;
+    }
+
+    const samplesArray = buffer.map((s) => s.fingers);
+    const aggregated = aggregateFingerSamples(samplesArray);
+    const lastWorldLandmarks = buffer[buffer.length - 1].worldLandmarks;
+    const isValid = validatePose(pose.id, aggregated, lastWorldLandmarks);
+
+    if (!isValid) {
+      setPoseRetryMsg(`${pose.label} 동작이 정확히 인식되지 않았어요. ${pose.instruction}`);
+      setPoseSecondsLeft(pose.duration);
+      triggerFeedback("동작을 다시 확인해주세요.");
+      return;
+    }
+
+    // 검증 통과 — 이 포즈의 대표값 확정
+    setPoseRetryMsg(null);
+    const confirmed = { ...poseResultsRef.current, [pose.id]: aggregated };
+    poseResultsRef.current = confirmed;
+    setPoseResults(confirmed);
+    triggerFeedback(`${pose.label} 측정 완료!`);
+
+    const nextIdx = poseIndexRef.current + 1;
+    if (nextIdx >= POSE_GUIDE.length) {
+      // 3개 포즈 모두 완료 — 4단계에서 만들 finishScan 호출 지점 (지금은 자리만 잡아둠)
+      finishScanRef.current?.(confirmed);
+      return;
+    }
+    poseIndexRef.current = nextIdx;
+    setPoseIndex(nextIdx);
+    setPoseSecondsLeft(POSE_GUIDE[nextIdx].duration);
+    sampleBufferRef.current = []; // 다음 포즈를 위해 버퍼 초기화
+  }, [triggerFeedback]);
+
   useEffect(() => {
     if (phase !== "scanning") return;
     poseIndexRef.current = 0;
+    poseResultsRef.current = {};
+    setPoseResults({});
     setPoseIndex(0);
+    setPoseRetryMsg(null);
     setPoseSecondsLeft(POSE_GUIDE[0].duration);
+    sampleBufferRef.current = [];
+
     const timer = setInterval(() => {
       setPoseSecondsLeft((prev) => {
         if (prev <= 1) {
-          const nextIdx = (poseIndexRef.current + 1) % POSE_GUIDE.length;
-          poseIndexRef.current = nextIdx;
-          setPoseIndex(nextIdx);
-          return POSE_GUIDE[nextIdx].duration;
+          evaluatePoseAndAdvance();
+          return prev; // evaluatePoseAndAdvance 내부에서 다음 값을 직접 세팅함
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [phase]);
+  }, [phase, evaluatePoseAndAdvance]);
 
   const stopDetectLoop = useCallback(() => {
     if (rafRef.current) {
