@@ -3,7 +3,7 @@
 // 기존 JOINTRUN_UNIFIED.jsx 의 인라인 스타일 디자인 언어(네이비/민트)를 그대로 따릅니다.
 
 import { useState } from "react";
-import { Activity, Mail, Lock, User as UserIcon, Loader2 } from "lucide-react";
+import { Mail, Lock, User as UserIcon, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function AuthScreen() {
@@ -61,9 +61,8 @@ export default function AuthScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "32px 24px", background: "#f8fafc" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 28 }}>
-        <div style={{ background: "#0f172a", color: "white", width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, boxShadow: "0 8px 20px rgba(15,23,42,0.25)" }}>
-          <Activity style={{ width: 28, height: 28, color: "#2dd4bf" }} />
-        </div>
+        <img src="/icons/icon-192.png" alt="JOINTRUN" style={{ width: 64, height: 64, borderRadius: 16, marginBottom: 12, boxShadow: "0 8px 20px rgba(15,23,42,0.18)" }} />
+
         <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>JOINTRUN</div>
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
           {mode === "login" ? "다시 만나서 반갑습니다" : "5년을 막는 일, 지금 시작하세요"}
