@@ -11,8 +11,9 @@ import HomeModule from "./tabs/HomeModule";
 import CoachModule from "./tabs/CoachModule";
 import TimelineModule from "./tabs/TimelineModule";
 import ReportModule from "./tabs/ReportModule";
-import CommunityModule from "./tabs/CommunityModule";
 import PremiumModule from "./tabs/PremiumModule";
+
+const NAVER_BAND_URL = "https://band.us/@jointrun";
 
 function JOINTRUNUnified() {
  const { currentUser, logout } = useAuth();
@@ -104,7 +105,7 @@ useEffect(() => {
     { id: "coach", icon: MessageSquare, label: "AI코치" },
     { id: "progress", icon: TrendingUp, label: "회복추이" },
     { id: "health", icon: Activity, label: "나의건강" },
-    { id: "premium", icon: Users, label: "커뮤니티" },
+    { id: "premium", icon: Users, label: "커뮤니티", externalUrl: NAVER_BAND_URL },
   ];
 
   return (
@@ -132,9 +133,7 @@ useEffect(() => {
         zIndex:50,
       }}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{background:"#0d9488",color:"white",width:30,height:30,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Activity style={{width:16,height:16}} />
-          </div>
+          <img src="/icons/icon-96.png" alt="JOINTRUN" style={{width:30,height:30,borderRadius:8}} />
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
         <button onClick={logout}
@@ -150,19 +149,15 @@ useEffect(() => {
 
             {/* Onboarding */}
             {showOnboarding && (
-              <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:456,background:"#0f172a",borderRadius:16,padding:14,border:"1px solid rgba(20,184,166,0.3)",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,alignItems:"center"}}>
-                  <span style={{fontSize:10,color:"#5eead4",fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
-                    <Sparkles style={{width:13,height:13,color:"#fb923c"}} />첫 만남 진단 (JTBD)
-                  </span>
-                  <button onClick={() => setShowOnboarding(false)} style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>닫기 ×</button>
-                </div>
-                {onboardingStep <= 3 && (
+              <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(15,23,42,0.92)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+                <div style={{background:"#0f172a",borderRadius:20,padding:24,maxWidth:340,width:"100%",border:"1px solid #334155"}}>
+                  <div style={{textAlign:"center",marginBottom:16}}>
+                    <Sparkles style={{width:28,height:28,color:"#2dd4bf",margin:"0 auto 8px"}} />
+                    <div style={{fontSize:15,fontWeight:900,color:"white"}}>맞춤 설정 {onboardingStep}/3</div>
+                  </div>
                   <div>
-                    <p style={{fontSize:10,color:"#cbd5e1",lineHeight:1.6,marginBottom:8}}>
-                      {onboardingStep === 1 && `${currentProfile.name} 님, 가장 걱정되는 부위는?`}
-                      {onboardingStep === 2 && "일상에서 가장 곤란한 행동은?"}
-                      {onboardingStep === 3 && "JOINTRUN과 달성하고 싶은 목표는?"}
+                    <p style={{fontSize:12,color:"#cbd5e1",textAlign:"center",marginBottom:14,lineHeight:1.6}}>
+                      {onboardingStep===1 ? "가장 신경 쓰이는 부위를 선택해주세요" : onboardingStep===2 ? "평소 손을 많이 쓰는 활동을 알려주세요" : "어떤 변화를 가장 원하시나요?"}
                     </p>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                       {(onboardingStep===1?["엄지","끝마디","손전체"]:onboardingStep===2?["가사","생업","사무"]:["유연성","생업지속","통증감소"]).map(opt => (
@@ -209,7 +204,6 @@ useEffect(() => {
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
               {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
-              {activeTab === "premium" && <CommunityModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
 
 
       </main>
@@ -231,7 +225,13 @@ useEffect(() => {
         boxShadow:"0 -2px 12px rgba(0,0,0,0.08)",
       }}>
         {TAB_CONFIG.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+          <button key={tab.id} onClick={() => {
+              if (tab.externalUrl) {
+                window.open(tab.externalUrl, "_blank", "noopener,noreferrer");
+                return;
+              }
+              setActiveTab(tab.id);
+            }}
             style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 0",background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#0d9488":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
             {tab.fab ? (
               <div style={{width:38,height:38,background:"#f0fdfa",border:"1.5px solid #99f6e4",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(13,148,136,0.25)"}}>
