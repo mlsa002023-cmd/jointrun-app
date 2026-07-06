@@ -149,15 +149,19 @@ useEffect(() => {
 
             {/* Onboarding */}
             {showOnboarding && (
-              <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(15,23,42,0.92)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-                <div style={{background:"#0f172a",borderRadius:20,padding:24,maxWidth:340,width:"100%",border:"1px solid #334155"}}>
-                  <div style={{textAlign:"center",marginBottom:16}}>
-                    <Sparkles style={{width:28,height:28,color:"#2dd4bf",margin:"0 auto 8px"}} />
-                    <div style={{fontSize:15,fontWeight:900,color:"white"}}>맞춤 설정 {onboardingStep}/3</div>
-                  </div>
+              <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:456,background:"#0f172a",borderRadius:16,padding:14,border:"1px solid rgba(20,184,166,0.3)",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#5eead4",fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                    <Sparkles style={{width:13,height:13,color:"#fb923c"}} />첫 만남 진단 (JTBD)
+                  </span>
+                  <button onClick={() => setShowOnboarding(false)} style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>닫기 ×</button>
+                </div>
+                {onboardingStep <= 3 && (
                   <div>
-                    <p style={{fontSize:12,color:"#cbd5e1",textAlign:"center",marginBottom:14,lineHeight:1.6}}>
-                      {onboardingStep===1 ? "가장 신경 쓰이는 부위를 선택해주세요" : onboardingStep===2 ? "평소 손을 많이 쓰는 활동을 알려주세요" : "어떤 변화를 가장 원하시나요?"}
+                    <p style={{fontSize:10,color:"#cbd5e1",lineHeight:1.6,marginBottom:8}}>
+                      {onboardingStep === 1 && `${currentProfile.name} 님, 가장 걱정되는 부위는?`}
+                      {onboardingStep === 2 && "일상에서 가장 곤란한 행동은?"}
+                      {onboardingStep === 3 && "JOINTRUN과 달성하고 싶은 목표는?"}
                     </p>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                       {(onboardingStep===1?["엄지","끝마디","손전체"]:onboardingStep===2?["가사","생업","사무"]:["유연성","생업지속","통증감소"]).map(opt => (
