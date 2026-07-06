@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Activity, Camera, Compass, LogOut, MessageSquare, Printer,
   Settings, Sparkles, TrendingUp, Users, Volume2, Zap
@@ -72,11 +72,11 @@ useEffect(() => {
   const [profileForm, setProfileForm] = useState({});
   const [profileMode, setProfileMode] = useState("edit");
 
-  const triggerFeedback = (msg) => {
+  const triggerFeedback = useCallback((msg) => {
     setFeedbackMsg(msg);
     if ("vibrate" in navigator) { try { navigator.vibrate(40); } catch {} }
     setTimeout(() => setFeedbackMsg(null), 2500);
-  };
+  }, []);
 
   const handleScanCompleted = (metrics) => {
     const updated = { ...currentProfile, fingerScore: Math.min(100, currentProfile.fingerScore+1), painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
