@@ -185,6 +185,14 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     confirmPoseRef.current = confirmPose;
   }, [confirmPose]);
 
+  // evaluatePoseAndAdvance를 ref에 최신 상태로 반영.
+  // (triggerFeedback 등 상위 props가 리렌더마다 재생성되어도 아래 스캔-리셋 useEffect가
+  //  덩달아 재실행되지 않도록, 그 effect는 이 ref만 참조하고 phase에만 의존한다.)
+  const evaluatePoseAndAdvanceRef = useRef(null);
+  useEffect(() => {
+    evaluatePoseAndAdvanceRef.current = evaluatePoseAndAdvance;
+  }, [evaluatePoseAndAdvance]);
+
   useEffect(() => {
     if (phase !== "scanning") return;
     poseIndexRef.current = 0;
@@ -198,14 +206,14 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     const timer = setInterval(() => {
       setPoseSecondsLeft((prev) => {
         if (prev <= 1) {
-          evaluatePoseAndAdvance();
+          evaluatePoseAndAdvanceRef.current?.();
           return prev; // evaluatePoseAndAdvance 내부에서 다음 값을 직접 세팅함
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [phase, evaluatePoseAndAdvance]);
+  }, [phase]); // ← evaluatePoseAndAdvance 제거, phase만 남김 (스캔 시작 시 한 번만 리셋)
 
   const stopDetectLoop = useCallback(() => {
     if (rafRef.current) {
