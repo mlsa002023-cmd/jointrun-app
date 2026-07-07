@@ -17,6 +17,7 @@ import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
+import { computeMobilityScore, computeStabilityScore, computeStiffnessComponent } from "../lib/fingerHealthScore";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -97,6 +98,8 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const latestFingersRef = useRef(null);
   const sampleBufferRef = useRef([]); // { fingers, worldLandmarks, ts } 최근 프레임 버퍼 — 포즈 검증/집계에 사용
   const SAMPLE_WINDOW_MS = 1500; // 마지막 1.5초 구간만 대표값 계산에 사용 (그 이전 프레임은 자동 폐기)
+  const rawFramesRef = useRef({}); // { spread: [...], ok: [...], fist: [...] } — 포즈별 원본 landmark 프레임 (raw 계층 저장용)
+  const RAW_FRAMES_PER_POSE = 20; // Firestore 문서 용량 보호를 위한 상한 (포즈당 마지막 20프레임만 보존)
 
   // phase: idle | camera_starting | ai_loading | scanning | camera_error | ai_error | completed
   const [phase, setPhase] = useState("idle");
@@ -147,12 +150,18 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     poseResultsRef.current = confirmed;
     setPoseResults(confirmed);
 
+    // sampleBufferRef가 초기화되기 전에 이 포즈의 원본 landmark 프레임을 raw 계층용으로 보존한다.
+    rawFramesRef.current = {
+      ...rawFramesRef.current,
+      [pose.id]: sampleBufferRef.current.slice(-RAW_FRAMES_PER_POSE).map((s) => ({ worldLandmarks: s.worldLandmarks, ts: s.ts })),
+    };
+
     setTimeout(() => {
       setPoseJustConfirmed(false);
       const nextIdx = poseIndexRef.current + 1;
       if (nextIdx >= POSE_GUIDE.length) {
         // 3개 포즈 모두 완료 — "완료되었습니다" 최종 화면으로 전환
-        finishScanRef.current?.(confirmed);
+        finishScanRef.current?.(confirmed, rawFramesRef.current);
         return;
       }
       poseIndexRef.current = nextIdx;
@@ -208,6 +217,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     if (phase !== "scanning") return;
     poseIndexRef.current = 0;
     poseResultsRef.current = {};
+    rawFramesRef.current = {};
     setPoseResults({});
     setPoseIndex(0);
     setPoseRetryMsg(null);
@@ -348,7 +358,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
    * 손가락별로 fist - spread 차이를 ROM으로 계산하고, 4개 손가락 평균을 대표 ROM으로 쓴다.
    */
   const finishScan = useCallback(
-    (confirmedResults) => {
+    (confirmedResults, rawFrames) => {
       const { spread, ok, fist } = confirmedResults;
       if (!spread || !ok || !fist) return; // 방어: 셋 다 있어야 계산 가능
 
@@ -370,6 +380,13 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       const stiffnessMin = Math.round((100 - avgScore) * 0.5);
       const painIndex = Math.round((100 - avgScore) / 15);
 
+      // Finger Health Score의 객관적(스캔) 성분만 여기서 계산한다.
+      // Inflammation/Recovery의 피로도 성분은 컨디션 체크인 값이 있어야 하므로 상위(JOINTRUNShell)에서 결합한다.
+      const mobility = computeMobilityScore(perFinger);
+      const stability = computeStabilityScore(spread, ok, fist);
+      const stiffnessComponent = computeStiffnessComponent(spread);
+
+      // 화면 표시용(scanResult)은 기존 flat 구조 그대로 유지 — 완료 화면 JSX는 변경하지 않는다.
       const result = {
         romDeg: avgRom,
         stiffnessMin,
@@ -389,8 +406,15 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       setHistory((prev) => [entry, ...prev].slice(0, 14));
 
       setScanResult(result);
-      onScanCompleted({ ...result, recommendation: buildRecommendation(avgScore, avgRom) });
       triggerFeedback(`스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`);
+
+      // 부모(JOINTRUNShell)에는 raw/metrics/scanScores로 분리된 신규 스키마를 전달한다.
+      onScanCompleted({
+        metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
+        scanScores: { mobility, stability, stiffnessComponent },
+        raw: rawFrames,
+        recommendation: buildRecommendation(mobility.value, avgRom),
+      });
 
       stopDetectLoop();
       setPhase("completed");
@@ -404,20 +428,32 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   }, [finishScan]);
 
   const runSimulation = () => {
+    const simFingers = [
+      { key: "index", name: "검지", flexion: 118, deviation: 4.2, deviationDir: "ulnar", score: 82 },
+      { key: "middle", name: "중지", flexion: 125, deviation: 3.1, deviationDir: "radial", score: 88 },
+      { key: "ring", name: "약지", flexion: 110, deviation: 6.8, deviationDir: "ulnar", score: 72 },
+      { key: "pinky", name: "소지", flexion: 105, deviation: 5.5, deviationDir: "ulnar", score: 68 },
+    ];
     const simResult = {
       romDeg: 122, stiffnessMin: 32, painIndex: 6,
-      fingers: [
-        { key: "index", name: "검지", flexion: 118, deviation: 4.2, deviationDir: "ulnar", score: 82 },
-        { key: "middle", name: "중지", flexion: 125, deviation: 3.1, deviationDir: "radial", score: 88 },
-        { key: "ring", name: "약지", flexion: 110, deviation: 6.8, deviationDir: "ulnar", score: 72 },
-        { key: "pinky", name: "소지", flexion: 105, deviation: 5.5, deviationDir: "ulnar", score: 68 },
-      ],
+      fingers: simFingers,
       avgScore: 78,
     };
     setScanResult(simResult);
-    onScanCompleted({ ...simResult, recommendation: buildRecommendation(simResult.avgScore, simResult.romDeg) });
     triggerFeedback("시뮬레이션 스캔 완료!");
     setPhase("completed");
+
+    // 시뮬레이션은 실제 spread 원본 자세 데이터가 없어 강직 성분은 고정값으로 대체한다.
+    const mobility = computeMobilityScore(simFingers.map((f) => ({ rom: f.flexion })));
+    const stability = computeStabilityScore(simFingers);
+    const stiffnessComponent = 75;
+
+    onScanCompleted({
+      metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
+      scanScores: { mobility, stability, stiffnessComponent },
+      raw: null,
+      recommendation: buildRecommendation(mobility.value, 122),
+    });
   };
 
   const currentPose = POSE_GUIDE[poseIndex];
