@@ -82,7 +82,7 @@ export default function AuthScreen() {
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-        <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>또는</span>
+        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>또는</span>
         <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
       </div>
 
@@ -105,7 +105,7 @@ export default function AuthScreen() {
         )}
 
         <button type="submit" disabled={submitting}
-          style={{ marginTop: 4, background: "#0d9488", color: "white", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: submitting ? 0.75 : 1, boxShadow: "0 4px 12px rgba(13,148,136,0.3)" }}>
+          style={{ marginTop: 4, background: "#0f766e", color: "white", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: submitting ? 0.75 : 1, boxShadow: "0 4px 12px rgba(13,148,136,0.3)" }}>
           {submitting && <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />}
           {mode === "login" ? "로그인" : "회원가입"}
         </button>
@@ -113,11 +113,11 @@ export default function AuthScreen() {
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 11 }}>
         <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setAuthError(null); setInfoMsg(null); }}
-          style={{ background: "none", border: "none", color: "#0d9488", fontWeight: 700, cursor: "pointer", padding: 0 }}>
+          style={{ background: "none", border: "none", color: "#0f766e", fontWeight: 700, cursor: "pointer", padding: 0 }}>
           {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
         </button>
         {mode === "login" && (
-          <button onClick={handleReset} style={{ background: "none", border: "none", color: "#94a3b8", fontWeight: 600, cursor: "pointer", padding: 0 }}>
+          <button onClick={handleReset} style={{ background: "none", border: "none", color: "#64748b", fontWeight: 600, cursor: "pointer", padding: 0 }}>
             비밀번호 찾기
           </button>
         )}

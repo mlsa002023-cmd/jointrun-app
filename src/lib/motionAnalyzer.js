@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────
 // MotionAnalyzer
-// 역할: HandTracker가 반환한 landmark(순수 데이터)를 받아
-//       PIP 굴곡각 / 측면편위 / Finger Score / 처방 문구를 계산한다.
+// 역할: HandTracker가 반환한 landmark(순수 데이터)를 받아 PIP 굴곡각 / 측면편위 등
+//       "metrics" 계층만 계산한다 (기하 계산 전담, 점수 정책은 다루지 않음).
+// Finger Health Score 산출은 fingerHealthScore.js, Habit Score는 habitScore.js 참고.
 // 카메라, MediaPipe API, React 상태를 전혀 모른다 — 순수 함수만 있음.
 // 입력: worldLandmarks (MediaPipe result.worldLandmarks[0])
 // ─────────────────────────────────────────────

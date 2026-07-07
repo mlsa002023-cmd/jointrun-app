@@ -25,8 +25,18 @@ import {
 } from "recharts";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import AuthScreen from "./components/AuthScreen";
-import { saveScanResult, getScanHistory, saveCheckIn, saveProfileSnapshot, getProfileSnapshot } from "./lib/firestore";
+import {
+  saveScanRecord, getScanHistory, saveCheckIn, saveProfileSnapshot, getProfileSnapshot,
+  getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+} from "./lib/firestore";
+import {
+  computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
+  DEFAULT_FINGER_HEALTH_SCORE,
+} from "./lib/fingerHealthScore";
+import { computeHabitScore, todayKey } from "./lib/habitScore";
+import { getTodayAction } from "./lib/getTodayAction";
 import MotionScanPage from "./components/MotionScanPage";
+import OnboardingScreen from "./components/OnboardingScreen";
 // ─────────────────────────────────────────────
 // CONSTANTS & DATA
 // ─────────────────────────────────────────────
@@ -37,7 +47,7 @@ const PATIENT_PROFILES_DEFAULT = [
     job: "미용사 (가위질 하루 8시간 이상)",
     symptoms: "양측 엄지·검지 관절염 및 저녁 통증 극심",
     handCondition: "관절 마찰음 발생, 가위 쥘 때 방아쇠수지(딸깍거림) 초기 현상",
-    fingerScore: 68, fingerAge: 65, fingerReserve: 62, recoveryScore: 71,
+    fingerHealthScore: 68, fingerAge: 65, fingerReserve: 62, recoveryScore: 71,
     morningStiffness: "주의 (약 35분 지속)", morningStiffnessMin: 35,
     painTrend: "오후 가위질 집중 시간대 통증 최고조", painIndex: 7,
     riskForecast: 42, weeklyROMChange: "+4.2% (엄지 굴곡 가동각 개선 중)", streakDays: 8,
@@ -47,7 +57,7 @@ const PATIENT_PROFILES_DEFAULT = [
     job: "전업 주부 (김장, 손수건 짜기 등 손노동 빈번)",
     symptoms: "아침 기상 시 양손 뻣뻣함(강직) 40분 지속 및 붓기",
     handCondition: "중지 마디의 방아쇠수지 증상, 물건을 쥘 때 움켜쥐는 힘 부족",
-    fingerScore: 59, fingerAge: 72, fingerReserve: 51, recoveryScore: 64,
+    fingerHealthScore: 59, fingerAge: 72, fingerReserve: 51, recoveryScore: 64,
     morningStiffness: "경고 (약 45분 지속)", morningStiffnessMin: 45,
     painTrend: "아침 기상 후 1시간 이내 극심, 온수 요법 후 완화", painIndex: 8,
     riskForecast: 68, weeklyROMChange: "+1.8% (강직 완화 시간 단축세)", streakDays: 4,
@@ -57,7 +67,7 @@ const PATIENT_PROFILES_DEFAULT = [
     job: "IT 기업 개발자 (키보드·마우스 사용 하루 10시간)",
     symptoms: "우측 수근관 증후군(손목터널) 및 엄지 손가락 끝 저림",
     handCondition: "손등을 맞대고 꺾었을 때(팔렌 검사) 20초 만에 저림 발생",
-    fingerScore: 78, fingerAge: 48, fingerReserve: 79, recoveryScore: 82,
+    fingerHealthScore: 78, fingerAge: 48, fingerReserve: 79, recoveryScore: 82,
     morningStiffness: "정상 (약 10분 지속)", morningStiffnessMin: 10,
     painTrend: "스마트 기기 장시간 사용 시 축적되는 손목 피로", painIndex: 5,
     riskForecast: 24, weeklyROMChange: "+6.5% (손목 가동 범위 양호 수준 유지)", streakDays: 14,
@@ -65,9 +75,9 @@ const PATIENT_PROFILES_DEFAULT = [
 ];
 
 const BIOMARKER_METRICS = (profile) => [
-  { name: "Finger Score™", value: profile.fingerScore, unit: "점", tradeName: "Finger Score™",
-    description: "관절 운동각(ROM), 조절 능력, 근력을 종합한 JOINTRUN 고유의 손가락 건강 상태 지표입니다.",
-    status: profile.fingerScore > 75 ? "good" : profile.fingerScore > 60 ? "stable" : "warning" },
+  { name: "Finger Score™", value: profile.fingerHealthScore, unit: "점", tradeName: "Finger Score™",
+    description: "Mobility·Stability·Inflammation·Recovery 4개 하위 점수를 종합한 Finger Health Score입니다.",
+    status: profile.fingerHealthScore > 75 ? "good" : profile.fingerHealthScore > 60 ? "stable" : "warning" },
   { name: "Finger Age™", value: profile.fingerAge, unit: "세", tradeName: "Finger Age™",
     description: "생체 가동성 데이터를 바탕으로 분석된 회원 님의 손가락 기능 나이입니다.",
     status: profile.fingerAge <= profile.age ? "good" : profile.fingerAge - profile.age < 10 ? "stable" : "danger" },
@@ -116,7 +126,7 @@ async function callAnthropicCoach(messages, profile) {
 - 이름: ${profile.name} (${profile.age}세, ${profile.gender})
 - 직업: ${profile.job}
 - 주요 증상: ${profile.symptoms}
-- Finger Score™: ${profile.fingerScore}/100점
+- Finger Score™: ${profile.fingerHealthScore}/100점
 - 아침 강직: ${profile.morningStiffness}
 - 통증 VAS: ${profile.painIndex}/10
 
@@ -254,10 +264,12 @@ function CoachModule({ currentProfile, triggerFeedback }) {
 // HOME MODULE
 // ─────────────────────────────────────────────
 
-function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onUpdateProfile, onCheckIn }) {
+function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onUpdateProfile, onCheckIn, onConditionCheckIn }) {
   const [activeStepId, setActiveStepId] = useState(1);
   const [timer, setTimer] = useState(180);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [swellingLevel, setSwellingLevel] = useState(0);
+  const [fatigueLevel, setFatigueLevel] = useState(0);
 
   useEffect(() => {
     const next = recoverySteps.find(s => !s.isCompleted);
@@ -287,7 +299,7 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
   };
 
   const completedCount = recoverySteps.filter(s => s.isCompleted).length;
-  const score = currentProfile.fingerScore;
+  const score = currentProfile.fingerHealthScore;
 
   return (
     <div className="space-y-4">
@@ -310,6 +322,32 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
         </div>
         <div className="flex justify-between text-[8px] text-slate-400 mt-0.5">
           <span>주의</span><span>양호</span><span>최상</span>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+        <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 컨디션 체크인</h4>
+        <div className="space-y-2.5">
+          <label className="block">
+            <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+              <span>붓기 정도</span><span className="font-bold text-teal-700">{swellingLevel}/10</span>
+            </div>
+            <input type="range" min={0} max={10} value={swellingLevel}
+              onChange={(e) => setSwellingLevel(Number(e.target.value))}
+              className="w-full accent-teal-600" />
+          </label>
+          <label className="block">
+            <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+              <span>피로도</span><span className="font-bold text-teal-700">{fatigueLevel}/10</span>
+            </div>
+            <input type="range" min={0} max={10} value={fatigueLevel}
+              onChange={(e) => setFatigueLevel(Number(e.target.value))}
+              className="w-full accent-teal-600" />
+          </label>
+          <button onClick={() => onConditionCheckIn?.(swellingLevel, fatigueLevel)}
+            className="w-full bg-teal-600 text-white text-[11px] font-bold py-2 rounded-xl mt-1">
+            체크인 반영하기
+          </button>
         </div>
       </div>
 
@@ -343,7 +381,7 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
       <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
         <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 AI 처방</h4>
         <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 text-[10px] text-slate-700 leading-relaxed">
-          {currentProfile.painIndex > 6 ? `${currentProfile.name} 님, 오늘 통증 수치가 높습니다. 무리한 손 사용을 줄이고 3분 온수 잼잼 요법을 즉시 시작해 주세요.` : `${currentProfile.name} 님, 오늘 관절 상태가 안정적입니다. 스마트 보조기를 착용한 채로 가볍게 20초 스캔을 진행해 회복 데이터를 누적해 보세요.`}
+          {getTodayAction(currentProfile)}
         </div>
       </div>
     </div>
@@ -377,17 +415,26 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
 
   // Firestore는 최신순(desc)으로 오므로 그래프용으로 오래된 순으로 뒤집고,
   // createdAt(Firestore Timestamp)을 사람이 읽는 날짜 라벨로 변환.
+  // scans 문서는 이제 { metrics, scores } 계층 구조 — raw 서브컬렉션은 여기서 전혀 조회하지 않는다.
   const chartData = [...scans].reverse().map(s => ({
     week: s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) : "-",
-    pain: s.painIndex ?? 0,
-    rom: s.avgScore ?? 0,
+    pain: s.metrics?.painIndex ?? 0,
+    rom: s.scores?.total ?? 0,
   }));
 
   const hasRealData = chartData.length >= 2;
-  const latestScore = scans[0]?.avgScore;
-  const earliestScore = scans[scans.length - 1]?.avgScore;
-  const realWeeklyChange = (hasRealData && latestScore != null && earliestScore != null)
-    ? `${latestScore >= earliestScore ? "+" : ""}${latestScore - earliestScore}점 (Finger Score 변화)`
+  // scans는 최신순(desc)이므로, 정확히 7일 이전인 기록 중 가장 최근 것을 찾아 비교한다.
+  const getScore = (s) => s?.scores?.total;
+  const oneWeekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const latestScan = scans[0];
+  const weekAgoScan = scans.find(s => {
+    const t = s.createdAt?.toDate ? s.createdAt.toDate().getTime() : null;
+    return t != null && t <= oneWeekAgoMs;
+  }) ?? scans[scans.length - 1]; // 7일 이전 기록이 없으면 보유한 가장 오래된 기록으로 대체
+  const latestScore = getScore(latestScan);
+  const weekAgoScore = getScore(weekAgoScan);
+  const realWeeklyChange = (hasRealData && latestScore != null && weekAgoScore != null)
+    ? `${latestScore >= weekAgoScore ? "+" : ""}${latestScore - weekAgoScore}점 (지난주 대비 Finger Health Score)`
     : null;
 
   return (
@@ -459,7 +506,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
 // REPORT MODULE
 // ─────────────────────────────────────────────
 
-function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedback }) {
+function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedback, onEditConcernArea }) {
   const biomarkers = BIOMARKER_METRICS(currentProfile);
   const statusColors = { good:"bg-teal-50 border-teal-200 text-teal-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
@@ -489,6 +536,16 @@ function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedbac
             </div>
           </div>
         ))}
+      </div>
+      <div className="bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
+        <h4 className="text-[10px] font-bold text-slate-400 px-2 pt-2 pb-1">마이페이지</h4>
+        <button onClick={onEditConcernArea} className="w-full flex items-center justify-between px-3 py-3 text-left">
+          <div>
+            <p className="text-xs font-bold text-slate-900">걱정 부위 다시 설정</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">현재: {currentProfile.concernArea || "미설정"}</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+        </button>
       </div>
     </div>
   );
@@ -589,7 +646,7 @@ const buildUserProfile = (user, overrides = {}) => ({
   job: "직업 미등록",
   symptoms: "증상 미등록",
   handCondition: "",
-  fingerScore: 70,
+  fingerHealthScore: DEFAULT_FINGER_HEALTH_SCORE, // 하위 점수 전부 중립값(50)일 때의 가중합 — 스캔 전 기본값
   fingerAge: 40,
   fingerReserve: 65,
   recoveryScore: 72,
@@ -599,7 +656,7 @@ const buildUserProfile = (user, overrides = {}) => ({
   painIndex: 3,
   riskForecast: 20,
   weeklyROMChange: "측정 대기 중",
-  streakDays: 1,
+  concernArea: null,
   ...overrides,
 });
 
@@ -609,7 +666,29 @@ const [userProfile, setUserProfile] = useState(
 
 const currentProfile = userProfile;
 
-// 로그인 시 Firestore 스냅샷 불러와 프로필에 반영
+// 가장 최근 스캔의 객관적 하위 점수(Mobility/Stability/강직 성분) — 다음 컨디션 체크인 때 그대로 재사용된다.
+// 스캔 기록이 아직 없는 신규 사용자는 중립값(50)/null에서 시작한다.
+const NEUTRAL_SUBSCORE = { value: 50, reason: "스캔 전 (중립값)" };
+const [lastScanScores, setLastScanScores] = useState({
+  mobility: NEUTRAL_SUBSCORE, stability: NEUTRAL_SUBSCORE, stiffnessComponent: null,
+});
+// 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
+const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
+// Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
+const [activeDayKeys, setActiveDayKeys] = useState([]);
+const habitScore = computeHabitScore(activeDayKeys);
+// 독립 온보딩 페이지 표시 여부. true: edit 모드(마이페이지에서 재방문) → 완료 시 "뒤로" 취소 가능.
+const [showOnboardingPage, setShowOnboardingPage] = useState(false);
+const [onboardingEditMode, setOnboardingEditMode] = useState(false);
+
+// 스캔/체크인이 있을 때마다 호출 — Habit Score 활동일 기록을 로컬(즉시 반영)과 Firestore에 함께 남긴다.
+const recordActivity = (uid) => {
+  const key = todayKey();
+  setActiveDayKeys(prev => (prev.includes(key) ? prev : [...prev, key].slice(-30)));
+  if (uid) recordHabitActivity(uid, key).catch(err => console.error("습관 활동 기록 실패:", err));
+};
+
+// 로그인 시 Firestore 스냅샷 + 최근 스캔 하위 점수 + 최근 컨디션 체크인 + 습관 활동 이력을 불러와 반영
 useEffect(() => {
   if (!currentUser) return;
   setUserProfile(buildUserProfile(currentUser));
@@ -618,6 +697,32 @@ useEffect(() => {
     if (snapshot) {
       setUserProfile(prev => ({ ...prev, ...snapshot }));
     }
+    // concernArea가 없다는 것은 아직 첫 만남 진단을 마치지 않았다는 뜻 — 최초 로그인 시 1회만 자동 진입.
+    if (!snapshot?.concernArea) {
+      setOnboardingEditMode(false);
+      setShowOnboardingPage(true);
+    }
+
+    const recentScans = await getScanHistory(currentUser.uid, 1);
+    if (recentScans[0]?.scores) {
+      const sc = recentScans[0].scores;
+      setLastScanScores({
+        mobility: sc.mobility ?? NEUTRAL_SUBSCORE,
+        stability: sc.stability ?? NEUTRAL_SUBSCORE,
+        stiffnessComponent: sc.recovery?.stiffnessComponent ?? null,
+      });
+    }
+
+    const lastCondition = await getLatestConditionCheckIn(currentUser.uid);
+    if (lastCondition) {
+      setCondition({
+        swellingLevel: lastCondition.swellingLevel ?? null,
+        fatigueLevel: lastCondition.fatigueLevel ?? null,
+      });
+    }
+
+    const activeDays = await getHabitActivity(currentUser.uid);
+    setActiveDayKeys(activeDays);
   })();
 }, [currentUser?.uid]);
 
@@ -626,8 +731,6 @@ useEffect(() => {
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [activeSpecSection, setActiveSpecSection] = useState(1);
   const [specSearch, setSpecSearch] = useState("");
-  const [showOnboarding, setShowOnboarding] = useState(true);
-  const [onboardingStep, setOnboardingStep] = useState(1);
   const [showDoctorReport, setShowDoctorReport] = useState(false);
   const [showCalibrator, setShowCalibrator] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -640,26 +743,69 @@ useEffect(() => {
     setTimeout(() => setFeedbackMsg(null), 2500);
   };
 
-  const handleScanCompleted = (metrics) => {
-    const updated = { ...currentProfile, fingerScore: Math.min(100, currentProfile.fingerScore+1), painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
-   setUserProfile(updated);
+  const handleScanCompleted = (payload) => {
+    const { metrics, scanScores, raw, recommendation } = payload;
+    // Mobility/Stability는 이번 스캔의 실측값, Inflammation/Recovery는 가장 최근 컨디션 체크인 값과 결합한다.
+    setLastScanScores(scanScores);
+    const inflammation = computeInflammationScore(condition.swellingLevel);
+    const fatigueComponent = computeFatigueComponent(condition.fatigueLevel);
+    const recovery = computeRecoveryScore(scanScores.stiffnessComponent, fatigueComponent);
+    const healthScore = computeFingerHealthScore({
+      mobility: scanScores.mobility, stability: scanScores.stability, inflammation, recovery,
+    });
+
+    const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
+    setUserProfile(updated);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
-      saveScanResult(currentUser.uid, metrics).catch(err => console.error("스캔 결과 저장 실패:", err));
+      saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
       saveProfileSnapshot(currentUser.uid, {
-        fingerScore: updated.fingerScore,
+        fingerHealthScore: updated.fingerHealthScore,
         painIndex: updated.painIndex,
         morningStiffnessMin: updated.morningStiffnessMin,
       }).catch(err => console.error("프로필 스냅샷 저장 실패:", err));
     }
+    recordActivity(currentUser?.uid);
   };
 
   const handleCheckIn = (checkinData) => {
     if (!currentUser) return;
     saveCheckIn(currentUser.uid, checkinData).catch(err => console.error("체크인 저장 실패:", err));
+    recordActivity(currentUser.uid);
+  };
+
+  // 붓기/피로도 컨디션 체크인 — 가장 최근 스캔의 객관적 하위 점수와 결합해 Finger Health Score를 재계산한다.
+  const handleConditionCheckIn = (swellingLevel, fatigueLevel) => {
+    setCondition({ swellingLevel, fatigueLevel });
+    const inflammation = computeInflammationScore(swellingLevel);
+    const fatigueComponent = computeFatigueComponent(fatigueLevel);
+    const recovery = computeRecoveryScore(lastScanScores.stiffnessComponent, fatigueComponent);
+    const healthScore = computeFingerHealthScore({
+      mobility: lastScanScores.mobility, stability: lastScanScores.stability, inflammation, recovery,
+    });
+
+    setUserProfile(prev => ({ ...prev, fingerHealthScore: healthScore.total }));
+    triggerFeedback("컨디션 체크인이 Finger Health Score에 반영되었습니다!");
+    if (currentUser) {
+      saveCheckIn(currentUser.uid, { swellingLevel, fatigueLevel, fingerHealthScore: healthScore.total }).catch(err => console.error("컨디션 체크인 저장 실패:", err));
+      saveProfileSnapshot(currentUser.uid, { fingerHealthScore: healthScore.total }).catch(err => console.error("프로필 스냅샷 저장 실패:", err));
+    }
+    recordActivity(currentUser?.uid);
   };
 
   const triggerDoctorReportPrint = () => { triggerFeedback("대학병원 제출용 AI 안심 리포트 PDF가 생성되었습니다."); setShowDoctorReport(true); };
+
+  // 온보딩(최초 1회 자동 진입 + 마이페이지에서 재방문) 완료 시 concernArea를 저장하고 홈으로 이동.
+  const handleOnboardingComplete = (concernArea) => {
+    setUserProfile(prev => ({ ...prev, concernArea }));
+    setShowOnboardingPage(false);
+    setOnboardingEditMode(false);
+    setActiveTab("home");
+    triggerFeedback("걱정 부위가 저장되었습니다!");
+    if (currentUser) {
+      saveProfileSnapshot(currentUser.uid, { concernArea }).catch(err => console.error("걱정 부위 저장 실패:", err));
+    }
+  };
 
   const TAB_CONFIG = [
     { id: "home", icon: Compass, label: "홈" },
@@ -669,6 +815,17 @@ useEffect(() => {
     { id: "health", icon: Activity, label: "나의건강" },
     { id: "premium", icon: Users, label: "커뮤니티" },
   ];
+
+  if (showOnboardingPage) {
+    return (
+      <OnboardingScreen
+        currentProfile={currentProfile}
+        initialValue={currentProfile.concernArea}
+        onComplete={handleOnboardingComplete}
+        onCancel={onboardingEditMode ? () => setShowOnboardingPage(false) : undefined}
+      />
+    );
+  }
 
   return (
     <div style={{
@@ -701,7 +858,7 @@ useEffect(() => {
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
         <button onClick={logout}
-          style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
+          style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#64748b",background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
           <LogOut style={{width:13,height:13}} />로그아웃
         </button>
       </div>
@@ -709,47 +866,16 @@ useEffect(() => {
       {/* ── 앱 스크롤 콘텐츠 ── */}
       <main style={{flex:1,overflowY:"auto",padding:"12px 14px 80px"}}>
 
-
-
-            {/* Onboarding */}
-            {showOnboarding && (
-              <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:456,background:"#0f172a",borderRadius:16,padding:14,border:"1px solid rgba(20,184,166,0.3)",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,alignItems:"center"}}>
-                  <span style={{fontSize:10,color:"#5eead4",fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
-                    <Sparkles style={{width:13,height:13,color:"#fb923c"}} />첫 만남 진단 (JTBD)
-                  </span>
-                  <button onClick={() => setShowOnboarding(false)} style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>닫기 ×</button>
-                </div>
-                {onboardingStep <= 3 && (
-                  <div>
-                    <p style={{fontSize:10,color:"#cbd5e1",lineHeight:1.6,marginBottom:8}}>
-                      {onboardingStep === 1 && `${currentProfile.name} 님, 가장 걱정되는 부위는?`}
-                      {onboardingStep === 2 && "일상에서 가장 곤란한 행동은?"}
-                      {onboardingStep === 3 && "JOINTRUN과 달성하고 싶은 목표는?"}
-                    </p>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-                      {(onboardingStep===1?["엄지","끝마디","손전체"]:onboardingStep===2?["가사","생업","사무"]:["유연성","생업지속","통증감소"]).map(opt => (
-                        <button key={opt} onClick={() => onboardingStep < 3 ? setOnboardingStep(s=>s+1) : setShowOnboarding(false)}
-                          style={{padding:"7px 4px",borderRadius:10,fontSize:10,fontWeight:700,border:"1px solid #334155",background:"#1e293b",color:"#cbd5e1",cursor:"pointer",transition:"all 0.2s"}}>
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* App content */}
               {activeTab === "home" && (
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
                     <div>
-                      <div style={{fontSize:11,color:"#94a3b8"}}>환영합니다!</div>
+                      <div style={{fontSize:11,color:"#64748b"}}>환영합니다!</div>
                       <div style={{fontSize:16,fontWeight:900,color:"#0f172a"}}>{currentProfile.name} 님</div>
                     </div>
-                    <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#ea580c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
-                      <Zap style={{width:12,height:12,fill:"#ea580c"}} />{currentProfile.streakDays}일 연속
+                    <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
+                      <Zap style={{width:12,height:12,fill:"#c2410c"}} />{habitScore.streak.days}일 연속
                     </div>
                   </div>
                   <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
@@ -757,21 +883,21 @@ useEffect(() => {
                       <span style={{width:8,height:8,borderRadius:"50%",background:"#14b8a6",display:"inline-block",boxShadow:"0 0 0 3px rgba(20,184,166,0.2)"}} />
                       <div>
                         <div style={{fontSize:9,color:"#64748b",fontWeight:700}}>스마트 보조기 정렬</div>
-                        <div style={{fontSize:9,color:"#0d9488",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
+                        <div style={{fontSize:9,color:"#0f766e",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
                       </div>
                     </div>
                     <button onClick={() => { setShowCalibrator(true); triggerFeedback("보조기 캘리브레이션 시작"); }}
-                      style={{background:"#f0fdfa",border:"1px solid #99f6e4",color:"#0d9488",padding:"4px 8px",borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      style={{background:"#f0fdfa",border:"1px solid #99f6e4",color:"#0f766e",padding:"4px 8px",borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
-                  <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setUserProfile(p)} onCheckIn={handleCheckIn} />
+                  <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setUserProfile(p)} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} />
                 </div>
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
-              {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
+              {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }} />}
               {activeTab === "premium" && <CommunityModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
 
 
@@ -795,7 +921,7 @@ useEffect(() => {
       }}>
         {TAB_CONFIG.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 0",background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#0d9488":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 0",background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#0f766e":"#64748b",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
             {tab.fab ? (
               <div style={{width:38,height:38,background:"#f0fdfa",border:"1.5px solid #99f6e4",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(13,148,136,0.25)"}}>
                 <tab.icon style={{width:20,height:20,color:"#0d9488"}} />
@@ -810,7 +936,7 @@ useEffect(() => {
 
       {/* FEEDBACK TOAST */}
       {feedbackMsg && (
-        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#0d9488",color:"#042f2e",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(13,148,136,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#0f766e",color:"white",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(13,148,136,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <Volume2 style={{width:14,height:14}} />{feedbackMsg}
         </div>
       )}
@@ -833,7 +959,7 @@ useEffect(() => {
               <div><strong>직업:</strong> {currentProfile.job}</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-              {[{l:"Finger Score™",v:`${currentProfile.fingerScore}점`},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
+              {[{l:"Finger Score™",v:`${currentProfile.fingerHealthScore}점`},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
                 <div key={item.l} style={{background:"#f8fafc",borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
                   <div style={{fontSize:9,color:"#64748b"}}>{item.l}</div>
                   <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginTop:2}}>{item.v}</div>
@@ -841,11 +967,11 @@ useEffect(() => {
               ))}
             </div>
             <div style={{background:"#f8fafc",borderRadius:10,padding:10,fontSize:10,color:"#334155",lineHeight:1.7,marginBottom:14}}>
-              해당 환자는 {currentProfile.job} 업무 시 지속적인 반복성 관절 가해를 겪고 있으며, 기상 시 약 {currentProfile.morningStiffnessMin}분간 아침 강직을 호소합니다. 최근 {currentProfile.streakDays}일간 JOINTRUN 스마트 보조기와 온수 가동성 습관 실천 결과, 손가락 굽힘 가동 범위(ROM)가 {currentProfile.weeklyROMChange}의 개선 회복 국면을 확인했습니다.
+              해당 환자는 {currentProfile.job} 업무 시 지속적인 반복성 관절 가해를 겪고 있으며, 기상 시 약 {currentProfile.morningStiffnessMin}분간 아침 강직을 호소합니다. 최근 {habitScore.streak.days}일간 JOINTRUN 스마트 보조기와 온수 가동성 습관 실천 결과, 손가락 굽힘 가동 범위(ROM)가 {currentProfile.weeklyROMChange}의 개선 회복 국면을 확인했습니다.
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:10,borderTop:"1px solid #e2e8f0"}}>
               <button onClick={() => { triggerFeedback("소견서가 프린터로 발송되었습니다."); setShowDoctorReport(false); }}
-                style={{background:"#0d9488",color:"white",fontWeight:800,fontSize:11,padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                style={{background:"#0f766e",color:"white",fontWeight:800,fontSize:11,padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
                 <Printer style={{width:14,height:14}} />소견서 출력
               </button>
               <button onClick={() => setShowDoctorReport(false)} style={{background:"#f1f5f9",color:"#334155",fontWeight:700,fontSize:11,padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer"}}>닫기</button>
@@ -858,10 +984,10 @@ useEffect(() => {
       {showCalibrator && (
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
           <div style={{background:"white",borderRadius:20,maxWidth:380,width:"100%",padding:20,boxShadow:"0 20px 40px rgba(0,0,0,0.25)",position:"relative"}}>
-            <button onClick={() => setShowCalibrator(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,fontWeight:700}}>×</button>
+            <button onClick={() => setShowCalibrator(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:16,fontWeight:700}}>×</button>
             <PremiumModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />
             <button onClick={() => { triggerFeedback("보조기 설정이 저장·동기화되었습니다."); setShowCalibrator(false); }}
-              style={{marginTop:12,width:"100%",background:"#0d9488",color:"white",fontWeight:900,fontSize:11,padding:"10px",borderRadius:12,border:"none",cursor:"pointer"}}>
+              style={{marginTop:12,width:"100%",background:"#0f766e",color:"white",fontWeight:900,fontSize:11,padding:"10px",borderRadius:12,border:"none",cursor:"pointer"}}>
               조율 완료 & 기기 동기화
             </button>
           </div>
