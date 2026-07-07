@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
-import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose } from "../lib/motionAnalyzer";
+import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric } from "../lib/motionAnalyzer";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -103,6 +103,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const [errorMessage, setErrorMessage] = useState(null);
   const [handDetected, setHandDetected] = useState(false);
   const [liveMetrics, setLiveMetrics] = useState(null);
+  const [gripMetric, setGripMetric] = useState(null); // 쥐기(fist) 판정용 실시간 디버그 값
   const [history, setHistory] = useState([]);
   const [justSaved, setJustSaved] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -245,6 +246,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         const fingers = analyzeAllFingers(worldLandmarks);
         latestFingersRef.current = fingers;
         setLiveMetrics(fingers);
+        setGripMetric(computeFistMetric(worldLandmarks));
 
         // 최근 프레임을 버퍼에 쌓고, 윈도우(1.5초) 밖의 오래된 샘플은 제거한다.
         // 포즈 판정·최종 대표값은 이 버퍼의 최근 구간 중앙값만 사용한다 — 단일 프레임 노이즈 방지.
@@ -456,6 +458,9 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 )}
                 {poseRetryMsg && !poseJustConfirmed && (
                   <p className="text-[9px] text-amber-300 mt-1 font-bold">{poseRetryMsg}</p>
+                )}
+                {currentPose.id === "fist" && gripMetric != null && (
+                  <p className="text-[9px] text-cyan-300 mt-1 font-mono">쥐기지표: {gripMetric.toFixed(2)} (1.3 미만이면 통과)</p>
                 )}
               </div>
               <div className="flex gap-1 shrink-0">

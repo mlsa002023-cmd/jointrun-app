@@ -107,9 +107,30 @@ export function aggregateFingerSamples(samplesArray) {
 }
 
 /**
- * 엄지 끝(4)-검지 끝(8) 거리를 손 크기(손목-중지 MCP 거리)로 정규화한 값.
- * OK 사인일수록 작아진다. worldLandmarks(월드 좌표)를 넣어야 손 크기 무관하게 비교 가능.
+ * 손목-손끝 거리를 손 크기(손목-중지 MCP 거리)로 정규화한 값의 4손가락 평균.
+ * 주먹을 쥘수록 손끝이 손목/손바닥 쪽으로 가까워져 작아진다.
+ * (관절 굽힘각 방식은 주먹 상태에서 손끝이 손바닥에 가려져 MediaPipe 좌표 추정이
+ *  불안정해지므로, OK 사인과 동일하게 거리 기반으로 판정한다.)
  */
+export function computeFistMetric(wl) {
+  const wrist = wl[0];
+  const middleMcp = wl[9];
+  const handScale =
+    Math.sqrt(
+      (middleMcp.x - wrist.x) ** 2 + (middleMcp.y - wrist.y) ** 2 + (middleMcp.z - wrist.z) ** 2
+    ) || 1e-6;
+  const tips = [8, 12, 16, 20]; // 검지/중지/약지/소지 끝
+  const avgDist =
+    tips.reduce((sum, idx) => {
+      const t = wl[idx];
+      return (
+        sum +
+        Math.sqrt((t.x - wrist.x) ** 2 + (t.y - wrist.y) ** 2 + (t.z - wrist.z) ** 2)
+      );
+    }, 0) / tips.length;
+  return avgDist / handScale;
+}
+
 export function computeOkSignMetric(wl) {
   const thumbTip = wl[4];
   const indexTip = wl[8];
@@ -128,13 +149,15 @@ export function computeOkSignMetric(wl) {
 /**
  * 집계된 손가락 결과가 실제로 해당 pose_id 모양에 부합하는지 검증한다.
  * false면 호출부에서 "다시 해주세요" 피드백을 주고 재시도시켜야 한다.
- * 임계값(80°, 20°, 0.4)은 초기 추정치 — 실사용자 테스트로 보정 필요.
  */
 export function validatePose(poseId, aggregatedFingers, worldLandmarksForOk) {
   if (!aggregatedFingers || aggregatedFingers.length === 0) return false;
   const avgFlexion =
     aggregatedFingers.reduce((s, f) => s + f.flexion, 0) / aggregatedFingers.length;
-  if (poseId === "fist") return avgFlexion > 80;
+  if (poseId === "fist") {
+    if (!worldLandmarksForOk) return false;
+    return computeFistMetric(worldLandmarksForOk) < 1.3; // 값이 작을수록 더 쥔 상태 — 실측 후 조정 필요할 수 있음
+  }
   if (poseId === "spread") return avgFlexion < 20;
   if (poseId === "ok") {
     if (!worldLandmarksForOk) return false;
