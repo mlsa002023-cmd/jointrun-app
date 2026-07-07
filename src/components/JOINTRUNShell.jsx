@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import MotionScanPage from "./MotionScanPage";
-import { saveScanResult, saveCheckIn, saveProfileSnapshot, getProfileSnapshot } from "../lib/firestore";
+import { saveScanRecord, saveCheckIn, saveProfileSnapshot, getProfileSnapshot } from "../lib/firestore";
 import { PATIENT_PROFILES_DEFAULT, DEFAULT_STEPS } from "../data/mockProfiles";
 import HomeModule from "./tabs/HomeModule";
 import CoachModule from "./tabs/CoachModule";
@@ -83,7 +83,8 @@ useEffect(() => {
    setUserProfile(updated);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
-      saveScanResult(currentUser.uid, metrics).catch(err => console.error("스캔 결과 저장 실패:", err));
+      // TODO(7단계 Home 이식): scores/rawFrames 연결은 MotionScanPage/HomeModule 이식 시 채운다.
+      saveScanRecord(currentUser.uid, { metrics, scores: null, rawFrames: null }).catch(err => console.error("스캔 결과 저장 실패:", err));
       saveProfileSnapshot(currentUser.uid, {
         fingerScore: updated.fingerScore,
         painIndex: updated.painIndex,
