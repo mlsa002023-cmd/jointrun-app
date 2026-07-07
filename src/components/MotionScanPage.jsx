@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
-import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric } from "../lib/motionAnalyzer";
+import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -104,6 +104,16 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const [handDetected, setHandDetected] = useState(false);
   const [liveMetrics, setLiveMetrics] = useState(null);
   const [gripMetric, setGripMetric] = useState(null); // 쥐기(fist) 판정용 실시간 디버그 값
+  const [debugInfo, setDebugInfo] = useState(null); // { thumbDist, avgFlexion, gesture } — 디버그 오버레이용 실시간 측정값
+  // 개발 모드(vite dev)에서는 기본으로 켜두고, 배포본(Vercel)에서는 우측 상단 DEBUG 버튼을 눌러 수동으로 켠다.
+  // (실제 버그는 배포된 iOS Safari 환경에서 재현되는 경우가 많아, 프로덕션에서도 켤 수 있어야 함)
+  const [debugVisible, setDebugVisible] = useState(() => {
+    try { return !!import.meta.env.DEV; } catch { return false; }
+  });
+  // detectLoop는 useCallback([]) — 즉 클로저가 한 번만 생성되므로 state를 직접 읽으면 값이 고정된다.
+  // 토글 버튼으로 바뀌는 debugVisible을 rAF 루프 안에서 항상 최신값으로 읽기 위해 ref로 미러링한다.
+  const debugVisibleRef = useRef(debugVisible);
+  useEffect(() => { debugVisibleRef.current = debugVisible; }, [debugVisible]);
   const [history, setHistory] = useState([]);
   const [justSaved, setJustSaved] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -247,6 +257,15 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         latestFingersRef.current = fingers;
         setLiveMetrics(fingers);
         setGripMetric(computeFistMetric(worldLandmarks));
+        if (debugVisibleRef.current) {
+          const avgFlexion = fingers.reduce((s, f) => s + f.flexion, 0) / fingers.length;
+          setDebugInfo({
+            thumbDist: computeOkSignMetric(worldLandmarks),
+            fingers,
+            avgFlexion,
+            gesture: detectGesture(fingers, worldLandmarks),
+          });
+        }
 
         // 최근 프레임을 버퍼에 쌓고, 윈도우(1.5초) 밖의 오래된 샘플은 제거한다.
         // 포즈 판정·최종 대표값은 이 버퍼의 최근 구간 중앙값만 사용한다 — 단일 프레임 노이즈 방지.
@@ -279,6 +298,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       } else {
         setHandDetected(false);
         setLiveMetrics(null);
+        setDebugInfo(null);
         clearCanvas(canvas);
       }
     }
@@ -426,8 +446,22 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors ${handDetected ? "bg-teal-500 text-slate-950" : "bg-slate-700 text-slate-400"}`}>
                 {handDetected ? "손 감지됨" : "손을 화면에 보여주세요"}
               </span>
-              <span className="text-[9px] text-teal-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
+              <span className="flex items-center gap-1.5">
+                <span className="text-[9px] text-teal-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
+                </span>
+                {/* 배포본(Vercel)에서도 필요할 때 켤 수 있는 디버그 오버레이 토글 — "주먹이 안 잡힌다" 류 버그를 눈으로 바로 확인하기 위함 */}
+                <button
+                  type="button"
+                  onClick={() => setDebugVisible((v) => !v)}
+                  className={`text-[9px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                    debugVisible
+                      ? "bg-amber-400 text-slate-950 border-amber-400"
+                      : "bg-slate-950/80 text-slate-400 border-slate-700"
+                  }`}
+                >
+                  DEBUG
+                </button>
               </span>
             </div>
 
@@ -479,6 +513,27 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                     <div className="text-[7px] text-slate-500">{Math.round(f.deviation)}° {f.deviationDir === "radial" ? "요측" : "척측"}</div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── 측정·데이터 로그 화면 (디버그 오버레이) ──
+                "주먹이 안 잡힌다", "OK가 이상하다" 같은 문제가 생겼을 때
+                모델이 실제로 무엇을 보고 있는지 숫자로 바로 확인하기 위한 패널.
+                DEBUG 버튼으로 켜고 끌 수 있고, liveMetrics 패널과 겹치지 않게 그 위에 띄운다. */}
+            {debugVisible && (
+              <div className="absolute bottom-20 left-2 right-2 z-30 bg-black/90 border border-amber-400/40 rounded-lg p-2 font-mono text-[10px] leading-relaxed text-lime-400 shadow-lg">
+                {debugInfo ? (
+                  <>
+                    <div>Thumb distance : {debugInfo.thumbDist.toFixed(2)}</div>
+                    {debugInfo.fingers.map((f) => (
+                      <div key={f.key}>{f.name} ({f.key}) flexion : {Math.round(f.flexion)}°</div>
+                    ))}
+                    <div>avgFlexion : {Math.round(debugInfo.avgFlexion)}°</div>
+                    <div className="text-amber-300 font-bold">Gesture : {debugInfo.gesture}</div>
+                  </>
+                ) : (
+                  <div className="text-slate-500">손이 감지되지 않았습니다 — 카메라 앞에 손을 비춰주세요.</div>
+                )}
               </div>
             )}
           </>
