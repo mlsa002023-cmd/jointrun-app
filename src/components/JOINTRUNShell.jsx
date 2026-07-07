@@ -27,7 +27,7 @@ const buildUserProfile = (user, overrides = {}) => ({
   job: "직업 미등록",
   symptoms: "증상 미등록",
   handCondition: "",
-  fingerScore: 70,
+  fingerHealthScore: 70, // TODO(7단계): 스캔 전 기본값을 중립 하위점수 가중합(50)으로 교체
   fingerAge: 40,
   fingerReserve: 65,
   recoveryScore: 72,
@@ -79,14 +79,14 @@ useEffect(() => {
   }, []);
 
   const handleScanCompleted = (metrics) => {
-    const updated = { ...currentProfile, fingerScore: Math.min(100, currentProfile.fingerScore+1), painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
+    const updated = { ...currentProfile, fingerHealthScore: Math.min(100, currentProfile.fingerHealthScore+1), painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
    setUserProfile(updated);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       // TODO(7단계 Home 이식): scores/rawFrames 연결은 MotionScanPage/HomeModule 이식 시 채운다.
       saveScanRecord(currentUser.uid, { metrics, scores: null, rawFrames: null }).catch(err => console.error("스캔 결과 저장 실패:", err));
       saveProfileSnapshot(currentUser.uid, {
-        fingerScore: updated.fingerScore,
+        fingerHealthScore: updated.fingerHealthScore,
         painIndex: updated.painIndex,
         morningStiffnessMin: updated.morningStiffnessMin,
       }).catch(err => console.error("프로필 스냅샷 저장 실패:", err));
@@ -275,7 +275,7 @@ useEffect(() => {
               <div><strong>직업:</strong> {currentProfile.job}</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-              {[{l:"Finger Score™",v:`${currentProfile.fingerScore}점`},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
+              {[{l:"Finger Score™",v:`${currentProfile.fingerHealthScore}점`},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
                 <div key={item.l} style={{background:"#f8fafc",borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
                   <div style={{fontSize:9,color:"#64748b"}}>{item.l}</div>
                   <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginTop:2}}>{item.v}</div>
