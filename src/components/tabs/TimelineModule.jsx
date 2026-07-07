@@ -29,17 +29,18 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
 
   // Firestore는 최신순(desc)으로 오므로 그래프용으로 오래된 순으로 뒤집고,
   // createdAt(Firestore Timestamp)을 사람이 읽는 날짜 라벨로 변환.
+  // scans 문서는 이제 { metrics, scores } 계층 구조 — raw 서브컬렉션은 여기서 전혀 조회하지 않는다.
   const chartData = [...scans].reverse().map(s => ({
     week: s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) : "-",
-    pain: s.painIndex ?? 0,
-    rom: s.avgScore ?? 0,
+    pain: s.metrics?.painIndex ?? 0,
+    rom: s.scores?.total ?? 0,
   }));
 
   const hasRealData = chartData.length >= 2;
-  const latestScore = scans[0]?.avgScore;
-  const earliestScore = scans[scans.length - 1]?.avgScore;
+  const latestScore = scans[0]?.scores?.total;
+  const earliestScore = scans[scans.length - 1]?.scores?.total;
   const realWeeklyChange = (hasRealData && latestScore != null && earliestScore != null)
-    ? `${latestScore >= earliestScore ? "+" : ""}${latestScore - earliestScore}점 (Finger Score 변화)`
+    ? `${latestScore >= earliestScore ? "+" : ""}${latestScore - earliestScore}점 (Finger Health Score 변화)`
     : null;
 
   return (
