@@ -944,9 +944,7 @@ useEffect(() => {
         zIndex:50,
       }}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{background:"#0d9488",color:"white",width:30,height:30,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Activity style={{width:16,height:16}} />
-          </div>
+          <img src="/icons/icon-96.png" alt="JOINTRUN" style={{width:30,height:30,borderRadius:8}} />
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
         <button onClick={logout}
