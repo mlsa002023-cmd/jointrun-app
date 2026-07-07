@@ -264,10 +264,79 @@ function CoachModule({ currentProfile, triggerFeedback }) {
 // HOME MODULE
 // ─────────────────────────────────────────────
 
-function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onUpdateProfile, onCheckIn, onConditionCheckIn }) {
+// ── 홈 화면 4섹션(오늘의 행동 → 오늘의 상태 → 최근 변화 → 기록하기) 공용 조각들 ──
+// First Scan / Normal 두 상태가 대부분 동일한 구성을 공유하므로, 섹션 단위로 나눠 재사용한다.
+
+function TodayActionCard({ profile, consistencyScore, mobilityTrendUp, swellingLevel }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 행동</h4>
+      <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 text-[10px] text-slate-700 leading-relaxed">
+        {getTodayAction({ name: profile.name, consistencyScore, mobilityTrendUp, swellingLevel })}
+      </div>
+    </div>
+  );
+}
+
+function TodayStatusCard({ profile }) {
+  const score = profile.fingerHealthScore;
+  return (
+    <div className="bg-gradient-to-br from-teal-50 to-slate-50 border border-teal-200 rounded-2xl p-3.5 shadow-sm">
+      <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 상태</h4>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <p className="text-[9px] text-slate-400 uppercase font-mono">Finger Score™</p>
+          <div className="flex items-end gap-1">
+            <span className="text-2xl font-black text-teal-700 font-mono">{score}</span>
+            <span className="text-xs text-slate-500 mb-0.5">/100</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-[9px] text-slate-400">관절 기능 나이</p>
+          <p className="text-lg font-black text-slate-800 font-mono">{profile.fingerAge}<span className="text-xs font-normal">세</span></p>
+        </div>
+      </div>
+      <div className="w-full bg-slate-200 rounded-full h-2">
+        <div className="bg-teal-500 h-2 rounded-full transition-all" style={{ width: `${score}%` }} />
+      </div>
+      <div className="flex justify-between text-[8px] text-slate-400 mt-0.5">
+        <span>주의</span><span>양호</span><span>최상</span>
+      </div>
+    </div>
+  );
+}
+
+/** Normal 상태 전용 — 직전 스캔 대비 Finger Health Score 증감. 7일/30일 추세는 회복추이·리포트 화면 몫으로 남겨둔다. */
+function RecentChangeCard({ recentChange }) {
+  const delta = recentChange?.delta;
+  const positive = delta != null && delta >= 0;
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <h4 className="text-xs font-bold text-slate-900 mb-1">최근 변화</h4>
+      {delta != null ? (
+        <p className="text-[11px] text-slate-700">
+          직전 스캔 대비 <span className={`font-bold ${positive ? "text-teal-600" : "text-red-500"}`}>{positive ? "+" : ""}{delta}점</span>
+        </p>
+      ) : (
+        <p className="text-[11px] text-slate-500">아직 비교할 데이터가 부족해요.</p>
+      )}
+    </div>
+  );
+}
+
+/** First Scan 상태 전용 — 비교할 이전 기록이 없다는 것을 명확히 안내(빈 화면처럼 보이지 않게). */
+function FirstScanNotice() {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 shadow-sm text-center">
+      <h4 className="text-xs font-bold text-amber-800 mb-1">최근 변화</h4>
+      <p className="text-[11px] text-amber-700">내일 다시 측정하면 변화를 확인할 수 있습니다.</p>
+    </div>
+  );
+}
+
+/** "기록하기" 섹션 — 컨디션 체크인 + 오늘의 회복 미션. First Scan/Normal 공통. */
+function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onCheckIn, onConditionCheckIn }) {
   const [activeStepId, setActiveStepId] = useState(1);
-  const [timer, setTimer] = useState(180);
-  const [timerRunning, setTimerRunning] = useState(false);
   const [swellingLevel, setSwellingLevel] = useState(0);
   const [fatigueLevel, setFatigueLevel] = useState(0);
 
@@ -275,13 +344,6 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
     const next = recoverySteps.find(s => !s.isCompleted);
     if (next) setActiveStepId(next.id);
   }, [recoverySteps]);
-
-  useEffect(() => {
-    if (!timerRunning) return;
-    if (timer <= 0) { setTimerRunning(false); triggerFeedback("온수 잼잼 요법 완료!"); return; }
-    const t = setTimeout(() => setTimer(p => p - 1), 1000);
-    return () => clearTimeout(t);
-  }, [timerRunning, timer]);
 
   const completeStep = (id) => {
     const completedStep = recoverySteps.find(s => s.id === id);
@@ -299,34 +361,11 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
   };
 
   const completedCount = recoverySteps.filter(s => s.isCompleted).length;
-  const score = currentProfile.fingerHealthScore;
 
   return (
-    <div className="space-y-4">
-      <div className="bg-gradient-to-br from-teal-50 to-slate-50 border border-teal-200 rounded-2xl p-3.5 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <p className="text-[9px] text-slate-400 uppercase font-mono">Finger Score™</p>
-            <div className="flex items-end gap-1">
-              <span className="text-2xl font-black text-teal-700 font-mono">{score}</span>
-              <span className="text-xs text-slate-500 mb-0.5">/100</span>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] text-slate-400">관절 기능 나이</p>
-            <p className="text-lg font-black text-slate-800 font-mono">{currentProfile.fingerAge}<span className="text-xs font-normal">세</span></p>
-          </div>
-        </div>
-        <div className="w-full bg-slate-200 rounded-full h-2">
-          <div className="bg-teal-500 h-2 rounded-full transition-all" style={{ width: `${score}%` }} />
-        </div>
-        <div className="flex justify-between text-[8px] text-slate-400 mt-0.5">
-          <span>주의</span><span>양호</span><span>최상</span>
-        </div>
-      </div>
-
+    <>
       <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-        <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 컨디션 체크인</h4>
+        <h4 className="text-xs font-bold text-slate-900 mb-2">기록하기 — 오늘의 컨디션 체크인</h4>
         <div className="space-y-2.5">
           <label className="block">
             <div className="flex justify-between text-[10px] text-slate-500 mb-1">
@@ -377,13 +416,53 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
           ))}
         </div>
       </div>
+    </>
+  );
+}
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-        <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 AI 처방</h4>
-        <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 text-[10px] text-slate-700 leading-relaxed">
-          {getTodayAction(currentProfile)}
-        </div>
+/** Empty State — 데이터 0개. 5초 안에 "뭘 해야 하는지" 이해할 수 있도록 게이지/체크인/미션 전부 걷어내고 CTA 하나만 남긴다. */
+function EmptyHomeState({ currentProfile, setActiveTab }) {
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px 12px" }}>
+      <div style={{ width: 64, height: 64, borderRadius: 20, background: "#f0fdfa", border: "1px solid #99f6e4", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+        <Camera style={{ width: 30, height: 30, color: "#0f766e" }} />
       </div>
+      <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>
+        {currentProfile.name} 님, 아직 기록이 없어요
+      </h2>
+      <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 260 }}>
+        첫 스캔을 하면 오늘의 손 건강이 분석됩니다.<br />20초면 충분해요.
+      </p>
+      <button onClick={() => setActiveTab("scan")}
+        style={{ background: "#0f766e", color: "white", fontWeight: 800, fontSize: 13, padding: "12px 28px", borderRadius: 14, border: "none", cursor: "pointer" }}>
+        첫 스캔 시작하기
+      </button>
+    </div>
+  );
+}
+
+/** First Scan State — 데이터 1개. 오늘의 상태는 보여주되 "최근 변화"는 비교 대상이 없다는 안내로 대체. */
+function FirstScanHomeState(props) {
+  const { currentProfile, consistencyScore, mobilityTrendUp, condition } = props;
+  return (
+    <div className="space-y-4">
+      <TodayActionCard profile={currentProfile} consistencyScore={consistencyScore} mobilityTrendUp={mobilityTrendUp} swellingLevel={condition?.swellingLevel} />
+      <TodayStatusCard profile={currentProfile} />
+      <FirstScanNotice />
+      <RecordSection {...props} />
+    </div>
+  );
+}
+
+/** Normal State — 데이터 2개 이상. 오늘의 행동 → 오늘의 상태 → 최근 변화 → 기록하기. */
+function HomeModule(props) {
+  const { currentProfile, consistencyScore, mobilityTrendUp, condition, recentChange } = props;
+  return (
+    <div className="space-y-4">
+      <TodayActionCard profile={currentProfile} consistencyScore={consistencyScore} mobilityTrendUp={mobilityTrendUp} swellingLevel={condition?.swellingLevel} />
+      <TodayStatusCard profile={currentProfile} />
+      <RecentChangeCard recentChange={recentChange} />
+      <RecordSection {...props} />
     </div>
   );
 }
@@ -674,6 +753,15 @@ const [lastScanScores, setLastScanScores] = useState({
 });
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
+// 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화(직전 스캔 대비)" 계산용.
+// null = 아직 로딩 전, []/[1개]/[2개]로 스캔 개수를 판정한다 (2개 이상은 더 가져올 필요 없음).
+const [recentScans, setRecentScans] = useState(null);
+const scanCount = recentScans === null ? null : recentScans.length;
+const recentChange = recentScans && recentScans.length >= 2
+  ? { delta: (recentScans[0].scores?.total ?? 0) - (recentScans[1].scores?.total ?? 0) }
+  : null;
+const mobilityTrendUp = !!(recentScans && recentScans.length >= 2 &&
+  (recentScans[0].scores?.mobility?.value ?? 0) > (recentScans[1].scores?.mobility?.value ?? 0));
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -703,9 +791,11 @@ useEffect(() => {
       setShowOnboardingPage(true);
     }
 
-    const recentScans = await getScanHistory(currentUser.uid, 1);
-    if (recentScans[0]?.scores) {
-      const sc = recentScans[0].scores;
+    // 최근 2개만 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화(직전 스캔 대비)" 계산에 그 이상은 필요 없다.
+    const rows = await getScanHistory(currentUser.uid, 2);
+    setRecentScans(rows);
+    if (rows[0]?.scores) {
+      const sc = rows[0].scores;
       setLastScanScores({
         mobility: sc.mobility ?? NEUTRAL_SUBSCORE,
         stability: sc.stability ?? NEUTRAL_SUBSCORE,
@@ -756,6 +846,8 @@ useEffect(() => {
 
     const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
     setUserProfile(updated);
+    // 홈 화면 상태(Empty/First Scan/Normal) 판정 + "최근 변화"가 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
+    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 2));
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
@@ -868,6 +960,9 @@ useEffect(() => {
 
             {/* App content */}
               {activeTab === "home" && (
+                scanCount === 0 ? (
+                  <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
+                ) : (
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
                     <div>
@@ -891,8 +986,13 @@ useEffect(() => {
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
-                  <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onUpdateProfile={p => setUserProfile(p)} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} />
+                  {scanCount === 1 ? (
+                    <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} condition={condition} />
+                  ) : (
+                    <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} condition={condition} recentChange={recentChange} />
+                  )}
                 </div>
+                )
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
