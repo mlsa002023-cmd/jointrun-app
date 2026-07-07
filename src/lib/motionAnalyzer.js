@@ -147,6 +147,16 @@ export function computeOkSignMetric(wl) {
 }
 
 /**
+ * 포즈 판정 임계값 — validatePose()와 detectGesture()(디버그 오버레이용)가
+ * 반드시 이 상수만 참조한다. 여기 한 곳만 바꾸면 판정/디버그 표시가 항상 일치한다.
+ */
+export const GESTURE_THRESHOLDS = {
+  fistMax: 1.3,   // computeFistMetric 값이 이보다 작으면 "쥔 상태"
+  okMax: 0.4,     // computeOkSignMetric 값이 이보다 작으면 "OK 사인"
+  spreadFlexionMax: 20, // 평균 굴곡각이 이보다 작으면 "펼친 상태"
+};
+
+/**
  * 집계된 손가락 결과가 실제로 해당 pose_id 모양에 부합하는지 검증한다.
  * false면 호출부에서 "다시 해주세요" 피드백을 주고 재시도시켜야 한다.
  */
@@ -156,12 +166,25 @@ export function validatePose(poseId, aggregatedFingers, worldLandmarksForOk) {
     aggregatedFingers.reduce((s, f) => s + f.flexion, 0) / aggregatedFingers.length;
   if (poseId === "fist") {
     if (!worldLandmarksForOk) return false;
-    return computeFistMetric(worldLandmarksForOk) < 1.3; // 값이 작을수록 더 쥔 상태 — 실측 후 조정 필요할 수 있음
+    return computeFistMetric(worldLandmarksForOk) < GESTURE_THRESHOLDS.fistMax;
   }
-  if (poseId === "spread") return avgFlexion < 20;
+  if (poseId === "spread") return avgFlexion < GESTURE_THRESHOLDS.spreadFlexionMax;
   if (poseId === "ok") {
     if (!worldLandmarksForOk) return false;
-    return computeOkSignMetric(worldLandmarksForOk) < 0.4;
+    return computeOkSignMetric(worldLandmarksForOk) < GESTURE_THRESHOLDS.okMax;
   }
   return true;
+}
+
+/**
+ * 디버그 오버레이 전용: 현재 프레임이 어떤 제스처로 "보이는지" 판정 대상 포즈와 무관하게 계산한다.
+ * 우선순위: FIST → OK → SPREAD → UNKNOWN (판정 로직이 아니라 눈으로 확인하기 위한 표시용).
+ */
+export function detectGesture(fingers, worldLandmarks) {
+  if (!fingers || fingers.length === 0) return "UNKNOWN";
+  const avgFlexion = fingers.reduce((s, f) => s + f.flexion, 0) / fingers.length;
+  if (worldLandmarks && computeFistMetric(worldLandmarks) < GESTURE_THRESHOLDS.fistMax) return "FIST";
+  if (worldLandmarks && computeOkSignMetric(worldLandmarks) < GESTURE_THRESHOLDS.okMax) return "OK";
+  if (avgFlexion < GESTURE_THRESHOLDS.spreadFlexionMax) return "SPREAD";
+  return "UNKNOWN";
 }
