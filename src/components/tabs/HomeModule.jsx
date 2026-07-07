@@ -34,7 +34,7 @@ function HomeModule({ currentProfile, recoverySteps, setRecoverySteps, setActive
   };
 
   const completedCount = recoverySteps.filter(s => s.isCompleted).length;
-  const score = currentProfile.fingerScore;
+  const score = currentProfile.fingerHealthScore;
 
   return (
     <div className="space-y-4">

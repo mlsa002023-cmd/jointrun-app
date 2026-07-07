@@ -8,7 +8,7 @@ async function callAnthropicCoach(messages, profile) {
 - 이름: ${profile.name} (${profile.age}세, ${profile.gender})
 - 직업: ${profile.job}
 - 주요 증상: ${profile.symptoms}
-- Finger Score™: ${profile.fingerScore}/100점
+- Finger Score™: ${profile.fingerHealthScore}/100점
 - 아침 강직: ${profile.morningStiffness}
 - 통증 VAS: ${profile.painIndex}/10
 
