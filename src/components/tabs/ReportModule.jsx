@@ -1,7 +1,7 @@
-import { Printer } from "lucide-react";
+import { Printer, ChevronRight } from "lucide-react";
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
 
-function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedback }) {
+function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedback, onEditConcernArea }) {
   const biomarkers = BIOMARKER_METRICS(currentProfile);
   const statusColors = { good:"bg-teal-50 border-teal-200 text-teal-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
@@ -31,6 +31,16 @@ function ReportModule({ currentProfile, triggerDoctorReportPrint, triggerFeedbac
             </div>
           </div>
         ))}
+      </div>
+      <div className="bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
+        <h4 className="text-[10px] font-bold text-slate-400 px-2 pt-2 pb-1">마이페이지</h4>
+        <button onClick={onEditConcernArea} className="w-full flex items-center justify-between px-3 py-3 text-left">
+          <div>
+            <p className="text-xs font-bold text-slate-900">걱정 부위 다시 설정</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">현재: {currentProfile.concernArea || "미설정"}</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+        </button>
       </div>
     </div>
   );
