@@ -11,8 +11,9 @@ import HomeModule from "./tabs/HomeModule";
 import CoachModule from "./tabs/CoachModule";
 import TimelineModule from "./tabs/TimelineModule";
 import ReportModule from "./tabs/ReportModule";
-import CommunityModule from "./tabs/CommunityModule";
 import PremiumModule from "./tabs/PremiumModule";
+
+const NAVER_BAND_URL = "https://band.us/@jointrun";
 
 function JOINTRUNUnified() {
  const { currentUser, logout } = useAuth();
@@ -104,7 +105,7 @@ useEffect(() => {
     { id: "coach", icon: MessageSquare, label: "AI코치" },
     { id: "progress", icon: TrendingUp, label: "회복추이" },
     { id: "health", icon: Activity, label: "나의건강" },
-    { id: "premium", icon: Users, label: "커뮤니티" },
+    { id: "premium", icon: Users, label: "커뮤니티", externalUrl: NAVER_BAND_URL },
   ];
 
   return (
@@ -132,9 +133,7 @@ useEffect(() => {
         zIndex:50,
       }}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{background:"#0d9488",color:"white",width:30,height:30,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Activity style={{width:16,height:16}} />
-          </div>
+          <img src="/icons/icon-96.png" alt="JOINTRUN" style={{width:30,height:30,borderRadius:8}} />
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
         <button onClick={logout}
@@ -209,7 +208,6 @@ useEffect(() => {
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
               {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
-              {activeTab === "premium" && <CommunityModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
 
 
       </main>
@@ -231,7 +229,13 @@ useEffect(() => {
         boxShadow:"0 -2px 12px rgba(0,0,0,0.08)",
       }}>
         {TAB_CONFIG.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+          <button key={tab.id} onClick={() => {
+              if (tab.externalUrl) {
+                window.open(tab.externalUrl, "_blank", "noopener,noreferrer");
+                return;
+              }
+              setActiveTab(tab.id);
+            }}
             style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 0",background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#0d9488":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
             {tab.fab ? (
               <div style={{width:38,height:38,background:"#f0fdfa",border:"1.5px solid #99f6e4",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(13,148,136,0.25)"}}>
