@@ -64,7 +64,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
       ) : (
         <>
           <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-            <p className="text-[10px] font-bold text-teal-700 mb-2">실제 스캔 기록 — 통증 지수(VAS) 추이</p>
+            <p className="text-[10px] font-bold text-blue-700 mb-2">실제 스캔 기록 — 통증 지수(VAS) 추이</p>
             <div className="h-40 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
@@ -78,7 +78,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
             </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-            <p className="text-[10px] font-bold text-teal-700 mb-2">실제 스캔 기록 — Finger Score™ 추이</p>
+            <p className="text-[10px] font-bold text-blue-700 mb-2">실제 스캔 기록 — Finger Score™ 추이</p>
             <div className="h-36 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
@@ -87,7 +87,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
                   <YAxis tick={{fontSize:8}} domain={[0,100]} />
                   <ChartTooltip contentStyle={{fontSize:"10px"}} />
                   <Bar dataKey="rom" name="Finger Score" radius={[4,4,0,0]}>
-                    {chartData.map((_, i) => <Cell key={i} fill={i === chartData.length - 1 ? "#14b8a6" : "#99f6e4"} />)}
+                    {chartData.map((_, i) => <Cell key={i} fill={i === chartData.length - 1 ? "#3b82f6" : "#bfdbfe"} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -96,11 +96,11 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         </>
       )}
 
-      <div className="bg-teal-50 border border-teal-200 rounded-2xl p-3 text-center">
-        <p className="text-[10px] font-bold text-teal-800 mb-2">
-          주간 회복 변화: <span className="text-teal-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
+      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
+        <p className="text-[10px] font-bold text-blue-800 mb-2">
+          주간 회복 변화: <span className="text-blue-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
         </p>
-        <button onClick={triggerDoctorReportPrint} className="bg-teal-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 mx-auto">
+        <button onClick={triggerDoctorReportPrint} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 mx-auto">
           <Printer className="w-3.5 h-3.5" /> 소견서 출력
         </button>
       </div>

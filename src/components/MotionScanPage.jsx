@@ -475,15 +475,15 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
 
         {phase === "scanning" && (
           <>
-            <div className="absolute inset-4 border border-dashed border-teal-500/30 rounded-xl pointer-events-none" />
-            <div className="absolute inset-x-0 top-0 h-1/3 pointer-events-none z-10 bg-gradient-to-b from-transparent via-teal-400/25 to-transparent animate-scan-sweep" />
+            <div className="absolute inset-4 border border-dashed border-blue-500/30 rounded-xl pointer-events-none" />
+            <div className="absolute inset-x-0 top-0 h-1/3 pointer-events-none z-10 bg-gradient-to-b from-transparent via-blue-400/25 to-transparent animate-scan-sweep" />
 
             <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-20">
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors ${handDetected ? "bg-teal-500 text-slate-950" : "bg-slate-700 text-slate-400"}`}>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors ${handDetected ? "bg-blue-500 text-slate-950" : "bg-slate-700 text-slate-400"}`}>
                 {handDetected ? "손 감지됨" : "손을 화면에 보여주세요"}
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="text-[9px] text-teal-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="text-[9px] text-blue-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
                 </span>
                 {/* 배포본(Vercel)에서도 필요할 때 켤 수 있는 디버그 오버레이 토글 — "주먹이 안 잡힌다" 류 버그를 눈으로 바로 확인하기 위함 */}
@@ -501,29 +501,29 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
               </span>
             </div>
 
-            <div className="absolute top-9 left-2 right-2 z-20 bg-slate-950/85 backdrop-blur-sm rounded-xl p-2.5 flex items-center gap-2.5 border border-teal-500/20">
+            <div className="absolute top-9 left-2 right-2 z-20 bg-slate-950/85 backdrop-blur-sm rounded-xl p-2.5 flex items-center gap-2.5 border border-blue-500/20">
               <div className="relative w-11 h-11 shrink-0">
                 <svg viewBox="0 0 40 40" className="absolute inset-0 w-full h-full -rotate-90">
                   <circle cx="20" cy="20" r={ringR} fill="none" stroke="#1e293b" strokeWidth="3" />
-                  <circle cx="20" cy="20" r={ringR} fill="none" stroke="#2dd4bf" strokeWidth="3"
+                  <circle cx="20" cy="20" r={ringR} fill="none" stroke="#60a5fa" strokeWidth="3"
                     strokeDasharray={ringCirc}
                     strokeDashoffset={ringCirc * (1 - poseProgress)}
                     strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
                 </svg>
-                <PoseIcon poseId={currentPose.id} className="absolute inset-0 w-full h-full p-1.5 text-teal-300" />
-                <span className="absolute -bottom-1 -right-1 text-[8px] font-black text-teal-300 bg-slate-950 rounded-full w-4 h-4 flex items-center justify-center border border-teal-500/40">
+                <PoseIcon poseId={currentPose.id} className="absolute inset-0 w-full h-full p-1.5 text-blue-300" />
+                <span className="absolute -bottom-1 -right-1 text-[8px] font-black text-blue-300 bg-slate-950 rounded-full w-4 h-4 flex items-center justify-center border border-blue-500/40">
                   {poseSecondsLeft}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 {poseJustConfirmed ? (
-                  <p className="text-[12px] font-black text-teal-300 flex items-center gap-1 animate-pulse">
+                  <p className="text-[12px] font-black text-blue-300 flex items-center gap-1 animate-pulse">
                     <Check className="w-3.5 h-3.5" /> 완료되었습니다!
                   </p>
                 ) : (
                   <>
                     <p className="text-[11px] font-bold text-white leading-tight">{currentPose.instruction}</p>
-                    <p className="text-[8px] text-teal-400/80 mt-0.5">{currentPose.sub}</p>
+                    <p className="text-[8px] text-blue-400/80 mt-0.5">{currentPose.sub}</p>
                   </>
                 )}
                 {poseRetryMsg && !poseJustConfirmed && (
@@ -535,7 +535,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
               </div>
               <div className="flex gap-1 shrink-0">
                 {POSE_GUIDE.map((p, i) => (
-                  <span key={p.id} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === poseIndex ? "bg-teal-400" : i < poseIndex ? "bg-teal-700" : "bg-slate-700"}`} />
+                  <span key={p.id} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === poseIndex ? "bg-blue-400" : i < poseIndex ? "bg-blue-700" : "bg-slate-700"}`} />
                 ))}
               </div>
             </div>
@@ -545,7 +545,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 {liveMetrics.map((f) => (
                   <div key={f.key} className="text-center">
                     <div className="text-[8px] text-slate-400">{f.name}</div>
-                    <div className="text-[10px] font-black text-teal-400 font-mono">{Math.round(f.flexion)}°</div>
+                    <div className="text-[10px] font-black text-blue-400 font-mono">{Math.round(f.flexion)}°</div>
                     <div className="text-[7px] text-slate-500">{Math.round(f.deviation)}° {f.deviationDir === "radial" ? "요측" : "척측"}</div>
                   </div>
                 ))}
@@ -578,8 +578,8 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         {/* ── AI 로딩 중: 카메라는 이미 보이고 있고, 그 위에 "AI 모델 로딩중" 배지만 얹는다 ── */}
         {phase === "ai_loading" && (
           <div className="absolute top-2 left-2 right-2 z-20 flex justify-center">
-            <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-slate-950/85 text-teal-300 flex items-center gap-2">
-              <span className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-slate-950/85 text-blue-300 flex items-center gap-2">
+              <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
               AI 모델 로딩중
             </span>
           </div>
@@ -594,15 +594,15 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         {phase === "idle" && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
             <div className="text-center mb-2">
-              <p className="text-[9px] text-teal-400 uppercase tracking-widest font-mono">Real MediaPipe AI Scan</p>
+              <p className="text-[9px] text-blue-400 uppercase tracking-widest font-mono">Real MediaPipe AI Scan</p>
               <h2 className="text-base font-bold text-white">실제 손 관절 스캔</h2>
               <p className="text-[10px] text-slate-400 leading-normal mt-1">카메라 : OFF · AI 모델 : 대기 · 손 감지 : 없음</p>
             </div>
-            <div className="w-16 h-16 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center">
-              <Camera className="w-8 h-8 text-teal-400" />
+            <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
+              <Camera className="w-8 h-8 text-blue-400" />
             </div>
             <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />어떠한 민감 정보도 외부로 전송되지 않습니다.</p>
-            <button onClick={startScan} className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
+            <button onClick={startScan} className="bg-blue-500 hover:bg-blue-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
               MediaPipe 스캔 시작
             </button>
             <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
@@ -625,7 +625,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 <button onClick={restart} className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">
                   다시 시도
                 </button>
-                <button onClick={runSimulation} className="bg-teal-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
+                <button onClick={runSimulation} className="bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
                   시뮬레이션 스캔 실행
                 </button>
               </div>
@@ -636,9 +636,9 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         {/* ── completed ── */}
         {phase === "completed" && scanResult && (
           <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/97 p-3">
-            <div className="bg-white border border-teal-200 rounded-2xl p-4 shadow-sm">
+            <div className="bg-white border border-blue-200 rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5 text-teal-700 text-xs font-bold">
+                <div className="flex items-center gap-1.5 text-blue-700 text-xs font-bold">
                   <Sparkles className="w-4 h-4 text-orange-500" />
                   스캔 분석 완료
                 </div>
@@ -646,7 +646,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                   <button onClick={restart} className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
                     <RefreshCw className="w-3 h-3" /> 다시 측정
                   </button>
-                  <button onClick={() => setActiveTab?.("home")} className="text-[10px] text-teal-600 hover:text-teal-800 flex items-center gap-1 font-bold">
+                  <button onClick={() => setActiveTab?.("home")} className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-1 font-bold">
                     <Compass className="w-3 h-3" /> 홈으로
                   </button>
                 </div>
@@ -655,7 +655,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 {scanResult.fingers.map((f) => (
                   <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
                     <div className="text-[8px] text-slate-400 font-bold">{f.name}</div>
-                    <div className="text-sm font-black text-teal-700 font-mono">{f.score}</div>
+                    <div className="text-sm font-black text-blue-700 font-mono">{f.score}</div>
                     <div className="text-[7px] text-slate-400">{Math.round(f.flexion)}°</div>
                   </div>
                 ))}
@@ -674,7 +674,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                   <div className="text-xs font-black text-orange-600 font-mono">{scanResult.painIndex}단계</div>
                 </div>
               </div>
-              <div className="bg-teal-50 border border-teal-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
+              <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
                 <strong className="text-slate-900">처방:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
               </div>
             </div>
@@ -684,7 +684,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 <div className="flex gap-1 overflow-x-auto">
                   {history.slice(0, 14).map((h, i) => (
                     <div key={i} className="shrink-0 text-center">
-                      <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center text-[8px] font-black text-teal-700">{h.avgScore}</div>
+                      <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center text-[8px] font-black text-blue-700">{h.avgScore}</div>
                       <div className="text-[7px] text-slate-400">{new Date(h.ts).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</div>
                     </div>
                   ))}

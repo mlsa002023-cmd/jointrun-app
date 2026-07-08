@@ -285,14 +285,14 @@ useEffect(() => {
                   </div>
                   <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:"#14b8a6",display:"inline-block",boxShadow:"0 0 0 3px rgba(20,184,166,0.2)"}} />
+                      <span style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",display:"inline-block",boxShadow:"0 0 0 3px rgba(59,130,246,0.2)"}} />
                       <div>
                         <div style={{fontSize:9,color:"#64748b",fontWeight:700}}>스마트 보조기 정렬</div>
-                        <div style={{fontSize:9,color:"#0d9488",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
+                        <div style={{fontSize:9,color:"#2563eb",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
                       </div>
                     </div>
                     <button onClick={() => { setShowCalibrator(true); triggerFeedback("보조기 캘리브레이션 시작"); }}
-                      style={{background:"#f0fdfa",border:"1px solid #99f6e4",color:"#0d9488",padding:"4px 8px",borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#2563eb",padding:"4px 8px",minHeight:44,borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
@@ -336,10 +336,10 @@ useEffect(() => {
               }
               setActiveTab(tab.id);
             }}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 0",background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#0d9488":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#2563eb":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
             {tab.fab ? (
-              <div style={{width:38,height:38,background:"#f0fdfa",border:"1.5px solid #99f6e4",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(13,148,136,0.25)"}}>
-                <tab.icon style={{width:20,height:20,color:"#0d9488"}} />
+              <div style={{width:38,height:38,background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(37,99,235,0.25)"}}>
+                <tab.icon style={{width:20,height:20,color:"#2563eb"}} />
               </div>
             ) : (
               <tab.icon style={{width:20,height:20}} />
@@ -351,7 +351,7 @@ useEffect(() => {
 
       {/* FEEDBACK TOAST */}
       {feedbackMsg && (
-        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#0d9488",color:"#042f2e",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(13,148,136,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#2563eb",color:"#172554",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(37,99,235,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <Volume2 style={{width:14,height:14}} />{feedbackMsg}
         </div>
       )}
@@ -359,7 +359,7 @@ useEffect(() => {
       {/* DOCTOR REPORT MODAL */}
       {showDoctorReport && (
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
-          <div style={{background:"white",borderRadius:20,maxWidth:560,width:"100%",padding:28,boxShadow:"0 25px 50px rgba(0,0,0,0.3)",border:"3px solid #14b8a6"}}>
+          <div style={{background:"white",borderRadius:20,maxWidth:560,width:"100%",padding:28,boxShadow:"0 25px 50px rgba(0,0,0,0.3)",border:"3px solid #3b82f6"}}>
             <div style={{display:"flex",justifyContent:"space-between",borderBottom:"2px solid #0f172a",paddingBottom:12,marginBottom:16}}>
               <div>
                 <div style={{fontSize:15,fontWeight:900,letterSpacing:"0.05em"}}>JOINTRUN DIGITAL BIOMARKER PORTFOLIO</div>
@@ -386,7 +386,7 @@ useEffect(() => {
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:10,borderTop:"1px solid #e2e8f0"}}>
               <button onClick={() => { triggerFeedback("소견서가 프린터로 발송되었습니다."); setShowDoctorReport(false); }}
-                style={{background:"#0d9488",color:"white",fontWeight:800,fontSize:11,padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                style={{background:"#2563eb",color:"white",fontWeight:800,fontSize:11,padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
                 <Printer style={{width:14,height:14}} />소견서 출력
               </button>
               <button onClick={() => setShowDoctorReport(false)} style={{background:"#f1f5f9",color:"#334155",fontWeight:700,fontSize:11,padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer"}}>닫기</button>
@@ -402,7 +402,7 @@ useEffect(() => {
             <button onClick={() => setShowCalibrator(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,fontWeight:700}}>×</button>
             <PremiumModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />
             <button onClick={() => { triggerFeedback("보조기 설정이 저장·동기화되었습니다."); setShowCalibrator(false); }}
-              style={{marginTop:12,width:"100%",background:"#0d9488",color:"white",fontWeight:900,fontSize:11,padding:"10px",borderRadius:12,border:"none",cursor:"pointer"}}>
+              style={{marginTop:12,width:"100%",background:"#2563eb",color:"white",fontWeight:900,fontSize:11,padding:"10px",borderRadius:12,border:"none",cursor:"pointer"}}>
               조율 완료 & 기기 동기화
             </button>
           </div>

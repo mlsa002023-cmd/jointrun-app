@@ -9,7 +9,7 @@ function AuthGate() {
   if (authLoading) {
     return (
       <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc"}}>
-        <Loader2 style={{width:28,height:28,color:"#0d9488"}} className="animate-spin" />
+        <Loader2 style={{width:28,height:28,color:"#2563eb"}} className="animate-spin" />
       </div>
     );
   }

@@ -50,7 +50,7 @@ function CoachModule({ currentProfile, triggerFeedback }) {
         {messages.map(m => (
           <div key={m.id} className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-[10px] leading-relaxed ${
-              m.sender === "user" ? "bg-teal-600 text-white" : "bg-white border border-slate-200 text-slate-800"
+              m.sender === "user" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-800"
             }`}>
               {m.text}
               <div className="text-[7px] mt-0.5 opacity-60">{m.ts}</div>
@@ -60,7 +60,7 @@ function CoachModule({ currentProfile, triggerFeedback }) {
         {typing && (
           <div className="flex justify-start">
             <div className="bg-white border border-slate-200 px-3 py-2 rounded-2xl flex gap-1 items-center">
-              {[0,1,2].map(i => <span key={i} className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}} />)}
+              {[0,1,2].map(i => <span key={i} className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}} />)}
             </div>
           </div>
         )}
@@ -68,15 +68,15 @@ function CoachModule({ currentProfile, triggerFeedback }) {
       </div>
       <div className="flex gap-1 flex-wrap">
         {QUICK_CHIPS.map(chip => (
-          <button key={chip} onClick={() => send(chip)} className="bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-300 text-slate-600 hover:text-teal-700 px-2.5 py-1 rounded-full text-[9px] font-semibold transition-all">
+          <button key={chip} onClick={() => send(chip)} className="bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-full text-[9px] font-semibold transition-all">
             {chip}
           </button>
         ))}
       </div>
       <div className="flex gap-2">
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="증상을 입력하세요..." className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-500" />
-        <button onClick={() => send()} className="bg-teal-600 hover:bg-teal-500 text-white p-2 rounded-xl transition-all">
+          placeholder="증상을 입력하세요..." className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        <button onClick={() => send()} className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-xl transition-all">
           <Send className="w-4 h-4" />
         </button>
       </div>

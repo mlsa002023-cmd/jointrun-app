@@ -23,9 +23,9 @@ export default function OnboardingScreen({ currentProfile, initialValue, onCompl
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 32 }}>
           <div style={{ background: "#0f172a", color: "white", width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14, boxShadow: "0 8px 20px rgba(15,23,42,0.25)" }}>
-            <Sparkles style={{ width: 26, height: 26, color: "#5eead4" }} />
+            <Sparkles style={{ width: 26, height: 26, color: "#93c5fd" }} />
           </div>
-          <div style={{ fontSize: 11, color: "#0f766e", fontWeight: 700, marginBottom: 6 }}>첫 만남 진단</div>
+          <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>첫 만남 진단</div>
           <div style={{ fontSize: 17, fontWeight: 900, color: "#0f172a", textAlign: "center" }}>
             {currentProfile?.name || "회원"} 님, 가장 걱정되는 부위는?
           </div>
@@ -39,9 +39,9 @@ export default function OnboardingScreen({ currentProfile, initialValue, onCompl
                 borderRadius: 14,
                 fontSize: 13,
                 fontWeight: 800,
-                border: selected === opt ? "2px solid #0f766e" : "1px solid #e2e8f0",
-                background: selected === opt ? "#f0fdfa" : "white",
-                color: selected === opt ? "#0f766e" : "#334155",
+                border: selected === opt ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
+                background: selected === opt ? "#eff6ff" : "white",
+                color: selected === opt ? "#1d4ed8" : "#334155",
                 cursor: "pointer",
                 transition: "all 0.15s",
               }}>
@@ -51,7 +51,7 @@ export default function OnboardingScreen({ currentProfile, initialValue, onCompl
         </div>
 
         <button onClick={() => selected && onComplete(selected)} disabled={!selected}
-          style={{ marginTop: 28, width: "100%", background: selected ? "#0f766e" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14, fontWeight: 800, cursor: selected ? "pointer" : "default" }}>
+          style={{ marginTop: 28, width: "100%", background: selected ? "#1d4ed8" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14, fontWeight: 800, cursor: selected ? "pointer" : "default" }}>
           {isEditMode ? "저장하기" : "시작하기"}
         </button>
       </div>

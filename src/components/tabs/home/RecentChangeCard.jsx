@@ -8,7 +8,7 @@ function RecentChangeCard({ recentChange }) {
       <h4 className="text-xs font-bold text-slate-900 mb-1">최근 변화</h4>
       {delta != null ? (
         <p className="text-[11px] text-slate-700">
-          직전 스캔 대비 <span className={`font-bold ${positive ? "text-teal-600" : "text-red-500"}`}>{positive ? "+" : ""}{delta}점</span>
+          직전 스캔 대비 <span className={`font-bold ${positive ? "text-blue-600" : "text-red-500"}`}>{positive ? "+" : ""}{delta}점</span>
         </p>
       ) : (
         <p className="text-[11px] text-slate-500">아직 비교할 데이터가 부족해요.</p>

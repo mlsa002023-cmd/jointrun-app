@@ -2,13 +2,13 @@
 function TodayStatusCard({ profile }) {
   const score = profile.fingerHealthScore;
   return (
-    <div className="bg-gradient-to-br from-teal-50 to-slate-50 border border-teal-200 rounded-2xl p-3.5 shadow-sm">
+    <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-200 rounded-2xl p-3.5 shadow-sm">
       <h4 className="text-xs font-bold text-slate-900 mb-2">오늘의 상태</h4>
       <div className="flex items-center justify-between mb-2">
         <div>
           <p className="text-[9px] text-slate-400 uppercase font-mono">Finger Score™</p>
           <div className="flex items-end gap-1">
-            <span className="text-2xl font-black text-teal-700 font-mono">{score}</span>
+            <span className="text-2xl font-black text-blue-700 font-mono">{score}</span>
             <span className="text-xs text-slate-500 mb-0.5">/100</span>
           </div>
         </div>
@@ -18,7 +18,7 @@ function TodayStatusCard({ profile }) {
         </div>
       </div>
       <div className="w-full bg-slate-200 rounded-full h-2">
-        <div className="bg-teal-500 h-2 rounded-full transition-all" style={{ width: `${score}%` }} />
+        <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${score}%` }} />
       </div>
       <div className="flex justify-between text-[8px] text-slate-400 mt-0.5">
         <span>주의</span><span>양호</span><span>최상</span>

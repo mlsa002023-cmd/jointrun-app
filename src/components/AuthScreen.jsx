@@ -98,13 +98,13 @@ export default function AuthScreen() {
           </div>
         )}
         {infoMsg && (
-          <div style={{ fontSize: 11, color: "#0f766e", background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: 8, padding: "6px 10px", fontWeight: 600 }}>
+          <div style={{ fontSize: 11, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", fontWeight: 600 }}>
             {infoMsg}
           </div>
         )}
 
         <button type="submit" disabled={submitting}
-          style={{ marginTop: 4, background: "#0d9488", color: "white", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: submitting ? 0.75 : 1, boxShadow: "0 4px 12px rgba(13,148,136,0.3)" }}>
+          style={{ marginTop: 4, background: "#2563eb", color: "white", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: submitting ? 0.75 : 1, boxShadow: "0 4px 12px rgba(37,99,235,0.3)" }}>
           {submitting && <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />}
           {mode === "login" ? "로그인" : "회원가입"}
         </button>
@@ -112,7 +112,7 @@ export default function AuthScreen() {
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 11 }}>
         <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setAuthError(null); setInfoMsg(null); }}
-          style={{ background: "none", border: "none", color: "#0d9488", fontWeight: 700, cursor: "pointer", padding: 0 }}>
+          style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", padding: 0 }}>
           {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
         </button>
         {mode === "login" && (

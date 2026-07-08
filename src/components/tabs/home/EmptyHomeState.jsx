@@ -4,8 +4,8 @@ import { Camera } from "lucide-react";
 function EmptyHomeState({ currentProfile, setActiveTab }) {
   return (
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px 12px" }}>
-      <div style={{ width: 64, height: 64, borderRadius: 20, background: "#f0fdfa", border: "1px solid #99f6e4", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-        <Camera style={{ width: 30, height: 30, color: "#0f766e" }} />
+      <div style={{ width: 64, height: 64, borderRadius: 20, background: "#eff6ff", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+        <Camera style={{ width: 30, height: 30, color: "#1d4ed8" }} />
       </div>
       <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>
         {currentProfile.name} 님, 아직 기록이 없어요
@@ -14,7 +14,7 @@ function EmptyHomeState({ currentProfile, setActiveTab }) {
         첫 스캔을 하면 오늘의 손 건강이 분석됩니다.<br />20초면 충분해요.
       </p>
       <button onClick={() => setActiveTab("scan")}
-        style={{ background: "#0f766e", color: "white", fontWeight: 800, fontSize: 13, padding: "12px 28px", borderRadius: 14, border: "none", cursor: "pointer" }}>
+        style={{ background: "#1d4ed8", color: "white", fontWeight: 800, fontSize: 13, padding: "12px 28px", borderRadius: 14, border: "none", cursor: "pointer" }}>
         첫 스캔 시작하기
       </button>
     </div>
