@@ -61,9 +61,8 @@ export default function AuthScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "32px 24px", background: "#f8fafc" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 28 }}>
-        <img src="/icons/icon-192.png" alt="JOINTRUN" style={{ width: 64, height: 64, borderRadius: 16, marginBottom: 12, boxShadow: "0 8px 20px rgba(15,23,42,0.18)" }} />
+        <img src="/logo-horizontal-color.png" alt="JOINTRUN" style={{ height: 40, width: "auto", marginBottom: 12 }} />
 
-        <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>JOINTRUN</div>
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
           {mode === "login" ? "다시 만나서 반갑습니다" : "5년을 막는 일, 지금 시작하세요"}
         </div>
