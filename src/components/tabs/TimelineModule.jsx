@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Printer } from "lucide-react";
+import { Printer, Plus } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as ChartTooltip, BarChart, Bar, Cell
 } from "recharts";
 import { getScanHistory } from "../../lib/firestore";
 
-function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback }) {
+function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback, onOpenEventMarker }) {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,6 +49,11 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         <p className="text-[9px] text-slate-400 uppercase font-mono">Recovery Progress</p>
         <h2 className="text-sm font-bold text-slate-900">관절 가동 범위(ROM) & 통증 감소 추이</h2>
       </div>
+
+      <button onClick={() => onOpenEventMarker?.()}
+        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
+        <Plus className="w-4 h-4" />기록 추가
+      </button>
 
       {loading ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">

@@ -9,7 +9,9 @@ import OnboardingScreen from "./OnboardingScreen";
 import {
   saveScanRecord, saveCheckIn, saveProfileSnapshot, getProfileSnapshot,
   getScanHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+  flushPendingEvents,
 } from "../lib/firestore";
+import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
   DEFAULT_FINGER_HEALTH_SCORE,
@@ -128,7 +130,16 @@ useEffect(() => {
   })();
 }, [currentUser?.uid]);
 
+  // 오프라인 상태에서 입력된 기록(events)을 재연결 시 동기화 — 앱 진입 시 1회 + 온라인 복귀 시마다 재시도.
+  useEffect(() => {
+    if (!currentUser) return;
+    flushPendingEvents();
+    window.addEventListener("online", flushPendingEvents);
+    return () => window.removeEventListener("online", flushPendingEvents);
+  }, [currentUser?.uid]);
+
   const [activeTab, setActiveTab] = useState("home");
+  const [showEventMarker, setShowEventMarker] = useState(false);
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [activeSpecSection, setActiveSpecSection] = useState(1);
@@ -297,16 +308,16 @@ useEffect(() => {
                     </button>
                   </div>
                   {scanCount === 1 ? (
-                    <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} />
+                    <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   ) : (
-                    <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} recentChange={recentChange} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} />
+                    <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} recentChange={recentChange} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
                 </div>
                 )
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
-              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
+              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
               {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }} />}
 
 
@@ -393,6 +404,16 @@ useEffect(() => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* EVENT MARKER MODAL */}
+      {showEventMarker && currentUser && (
+        <EventMarkerModal
+          uid={currentUser.uid}
+          onClose={() => setShowEventMarker(false)}
+          onSaved={() => recordActivity(currentUser.uid)}
+          triggerFeedback={triggerFeedback}
+        />
       )}
 
       {/* CALIBRATOR MODAL */}

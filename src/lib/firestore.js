@@ -3,6 +3,7 @@ import {
   collection, addDoc, getDocs, query, orderBy, limit,
   doc, setDoc, getDoc, serverTimestamp,
 } from "firebase/firestore";
+import { EVENT_SCHEMA_VERSION } from "./eventTypes";
 
 // 문서 구조(raw/metrics/scores/habit 계층 분리) 자체의 버전 — 점수 산출 알고리즘 버전(scoreVersion)과는 별개 개념.
 // 계층 구조나 필드 이름이 바뀌면 이 값을 올린다.
@@ -116,6 +117,82 @@ export async function getHabitActivity(uid) {
     return snap.exists() ? (snap.data().activeDays ?? []) : [];
   } catch (e) {
     console.warn("getHabitActivity 실패:", e);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
+// events (Event Marker) — 오프라인 큐잉: Firestore 쓰기 실패 시(오프라인 포함)
+// localStorage에 쌓아두고, 재연결 시 flushPendingEvents로 순서대로 재전송한다.
+// ─────────────────────────────────────────────
+const EVENTS_QUEUE_KEY = "jointrun_pending_events";
+
+function loadEventQueue() {
+  try { return JSON.parse(localStorage.getItem(EVENTS_QUEUE_KEY) || "[]"); } catch { return []; }
+}
+function saveEventQueue(queueItems) {
+  try { localStorage.setItem(EVENTS_QUEUE_KEY, JSON.stringify(queueItems)); } catch { /* localStorage 사용 불가 시 조용히 무시 */ }
+}
+function queueOfflineEvent(uid, record) {
+  saveEventQueue([...loadEventQueue(), { uid, record, queuedAt: new Date().toISOString() }]);
+}
+
+export async function saveEvent(uid, { type, label, memo, timestamp }) {
+  if (!uid) return null;
+  const record = {
+    type, label,
+    memo: memo?.trim() || null,
+    timestamp: (timestamp instanceof Date ? timestamp : new Date()).toISOString(),
+    schemaVersion: EVENT_SCHEMA_VERSION,
+  };
+  if (!FIREBASE_ENABLED || !db || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    queueOfflineEvent(uid, record);
+    return null;
+  }
+  try {
+    const ref = await addDoc(collection(db, "users", uid, "events"), {
+      ...record, timestamp: new Date(record.timestamp), createdAt: serverTimestamp(),
+    });
+    return ref.id;
+  } catch (e) {
+    console.warn("saveEvent 실패 - 오프라인 큐에 저장:", e);
+    queueOfflineEvent(uid, record);
+    return null;
+  }
+}
+
+/** 재연결 시(온라인 이벤트, 앱 재진입 등) 큐에 쌓인 이벤트를 순서대로 재전송한다. */
+export async function flushPendingEvents() {
+  if (!FIREBASE_ENABLED || !db || (typeof navigator !== "undefined" && !navigator.onLine)) return;
+  const queueItems = loadEventQueue();
+  if (!queueItems.length) return;
+  const stillPending = [];
+  for (const item of queueItems) {
+    try {
+      await addDoc(collection(db, "users", item.uid, "events"), {
+        type: item.record.type, label: item.record.label, memo: item.record.memo,
+        timestamp: new Date(item.record.timestamp), schemaVersion: item.record.schemaVersion,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      stillPending.push(item);
+    }
+  }
+  saveEventQueue(stillPending);
+}
+
+export async function getEventHistory(uid, count = 30) {
+  if (!uid || !FIREBASE_ENABLED || !db) return [];
+  try {
+    const q = query(
+      collection(db, "users", uid, "events"),
+      orderBy("timestamp", "desc"),
+      limit(count)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn("getEventHistory 실패:", e);
     return [];
   }
 }
