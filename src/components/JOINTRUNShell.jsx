@@ -325,7 +325,7 @@ useEffect(() => {
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
-              {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
+              {activeTab === "report" && <ReportModule currentProfile={currentProfile} scans={recentScans} />}
               {activeTab === "profile" && (
                 <ProfileModule
                   currentProfile={currentProfile}
