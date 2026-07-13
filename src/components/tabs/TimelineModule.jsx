@@ -6,11 +6,14 @@ import {
 } from "recharts";
 import { getScanHistory, getEventHistory } from "../../lib/firestore";
 import { mergeScansAndEvents, formatTimelineDate } from "../../lib/mergeTimeline";
+import { getTimelineIcon } from "../../lib/eventIcons";
+import EventDetailModal from "../EventDetailModal";
 
 function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback, onOpenEventMarker }) {
   const [scans, setScans] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,17 +76,28 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         ) : timelineItems.length === 0 ? (
           <p className="text-[10px] text-slate-400 py-2">아직 기록이 없습니다. 스캔을 하거나 기록을 추가해보세요.</p>
         ) : (
-          <div className="space-y-1.5">
-            {timelineItems.map((item) => (
-              <div key={`${item.kind}-${item.id}`} className="flex items-center gap-2 text-[11px] text-slate-700 py-0.5">
-                <span className="text-slate-400 shrink-0 w-14">{formatTimelineDate(item.date)}</span>
-                <span className={item.kind === "scan" ? "text-blue-500" : "text-orange-500"}>●</span>
-                <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
-              </div>
-            ))}
+          <div className="space-y-1">
+            {timelineItems.map((item) => {
+              const Icon = getTimelineIcon(item);
+              const isEvent = item.kind === "event";
+              const Row = isEvent ? "button" : "div";
+              return (
+                <Row key={`${item.kind}-${item.id}`}
+                  onClick={isEvent ? () => setSelectedEvent(item) : undefined}
+                  className={`w-full flex items-center gap-2 text-[11px] text-slate-700 py-1.5 ${isEvent ? "text-left hover:bg-slate-50 rounded-lg -mx-1 px-1" : ""}`}>
+                  <span className="text-slate-400 shrink-0 w-14">{formatTimelineDate(item.date)}</span>
+                  <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
+                  <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                </Row>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} scans={scans} onClose={() => setSelectedEvent(null)} />
+      )}
 
       {loading ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
