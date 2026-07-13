@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Check, Flame } from "lucide-react";
+import { Check, Flame, Plus } from "lucide-react";
 
 // "기록하기" 섹션 — 컨디션 체크인(붓기/피로도) + 오늘의 회복 미션. First Scan/Normal 공통.
-function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onCheckIn, onConditionCheckIn }) {
+function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onCheckIn, onConditionCheckIn, onOpenEventMarker }) {
   const [activeStepId, setActiveStepId] = useState(1);
   const [swellingLevel, setSwellingLevel] = useState(0);
   const [fatigueLevel, setFatigueLevel] = useState(0);
@@ -31,6 +31,11 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
 
   return (
     <>
+      <button onClick={() => onOpenEventMarker?.()}
+        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
+        <Plus className="w-4 h-4" />기록 추가
+      </button>
+
       <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
         <h4 className="text-xs font-bold text-slate-900 mb-2">기록하기 — 오늘의 컨디션 체크인</h4>
         <div className="space-y-2.5">

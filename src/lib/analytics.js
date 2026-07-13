@@ -42,3 +42,10 @@ export function trackEvent(eventName, params = {}) {
     window.gtag("event", eventName, params);
   }
 }
+
+// Phase 1 핵심 KPI 이벤트(작업지시서 §8) 전송 헬퍼 — userId(Firebase UID, PII 아님)와
+// timestamp를 모든 이벤트에 공통 파라미터로 싣는다. uid가 없으면(로그인 전) 전송하지 않는다.
+export function trackKpiEvent(eventName, uid, params = {}) {
+  if (!uid) return;
+  trackEvent(eventName, { userId: uid, timestamp: new Date().toISOString(), ...params });
+}

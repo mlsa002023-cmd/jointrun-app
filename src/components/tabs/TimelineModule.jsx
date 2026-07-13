@@ -1,14 +1,19 @@
 import { useState, useEffect } from "react";
-import { Printer } from "lucide-react";
+import { Printer, Plus } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as ChartTooltip, BarChart, Bar, Cell
 } from "recharts";
-import { getScanHistory } from "../../lib/firestore";
+import { getScanHistory, getEventHistory } from "../../lib/firestore";
+import { mergeScansAndEvents, formatTimelineDate } from "../../lib/mergeTimeline";
+import { getTimelineIcon } from "../../lib/eventIcons";
+import EventDetailModal from "../EventDetailModal";
 
-function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback }) {
+function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback, onOpenEventMarker }) {
   const [scans, setScans] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -16,16 +21,22 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
       setLoading(true);
       if (!currentUser) { setLoading(false); return; }
       try {
-        const rows = await getScanHistory(currentUser.uid, 30);
-        if (!cancelled) setScans(rows);
+        const [scanRows, eventRows] = await Promise.all([
+          getScanHistory(currentUser.uid, 30),
+          getEventHistory(currentUser.uid, 30),
+        ]);
+        if (!cancelled) { setScans(scanRows); setEvents(eventRows); }
       } catch (err) {
-        console.error("[JOINTRUN] 스캔 기록 조회 실패:", err);
+        console.error("[JOINTRUN] 타임라인 기록 조회 실패:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [currentUser]);
+
+  // scans(측정 기록) + events(행동 기록) 병합 리스트 — 별도의 ACTION 화면 없이 하나의 시간순 리스트로 통합.
+  const timelineItems = mergeScansAndEvents(scans, events);
 
   // Firestore는 최신순(desc)으로 오므로 그래프용으로 오래된 순으로 뒤집고,
   // createdAt(Firestore Timestamp)을 사람이 읽는 날짜 라벨로 변환.
@@ -49,6 +60,44 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         <p className="text-[9px] text-slate-400 uppercase font-mono">Recovery Progress</p>
         <h2 className="text-sm font-bold text-slate-900">관절 가동 범위(ROM) & 통증 감소 추이</h2>
       </div>
+
+      <button onClick={() => onOpenEventMarker?.()}
+        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
+        <Plus className="w-4 h-4" />기록 추가
+      </button>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+        <h4 className="text-xs font-bold text-slate-900 mb-2">전체 기록</h4>
+        {loading ? (
+          <div className="space-y-1.5">
+            <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
+            <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
+          </div>
+        ) : timelineItems.length === 0 ? (
+          <p className="text-[10px] text-slate-400 py-2">아직 기록이 없습니다. 스캔을 하거나 기록을 추가해보세요.</p>
+        ) : (
+          <div className="space-y-1">
+            {timelineItems.map((item) => {
+              const Icon = getTimelineIcon(item);
+              const isEvent = item.kind === "event";
+              const Row = isEvent ? "button" : "div";
+              return (
+                <Row key={`${item.kind}-${item.id}`}
+                  onClick={isEvent ? () => setSelectedEvent(item) : undefined}
+                  className={`w-full flex items-center gap-2 text-[11px] text-slate-700 py-1.5 ${isEvent ? "text-left hover:bg-slate-50 rounded-lg -mx-1 px-1" : ""}`}>
+                  <span className="text-slate-400 shrink-0 w-14">{formatTimelineDate(item.date)}</span>
+                  <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
+                  <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                </Row>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} scans={scans} uid={currentUser?.uid} onClose={() => setSelectedEvent(null)} />
+      )}
 
       {loading ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">

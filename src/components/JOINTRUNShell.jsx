@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Activity, Camera, Compass, LogOut, MessageSquare, Printer,
-  Settings, TrendingUp, Users, Volume2, Zap
+  Activity, Camera, Compass, Printer,
+  Settings, TrendingUp, User, Volume2, Zap
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import MotionScanPage from "./MotionScanPage";
 import OnboardingScreen from "./OnboardingScreen";
 import {
   saveScanRecord, saveCheckIn, saveProfileSnapshot, getProfileSnapshot,
-  getScanHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+  getScanHistory, getEventHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+  flushPendingEvents,
 } from "../lib/firestore";
+import { trackKpiEvent } from "../lib/analytics";
+import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
   DEFAULT_FINGER_HEALTH_SCORE,
@@ -18,10 +21,13 @@ import { computeHabitScore, todayKey } from "../lib/habitScore";
 import { PATIENT_PROFILES_DEFAULT, DEFAULT_STEPS } from "../data/mockProfiles";
 import EmptyHomeState from "./tabs/home/EmptyHomeState";
 import FirstScanHomeState from "./tabs/home/FirstScanHomeState";
+import HomeSkeleton from "./tabs/home/HomeSkeleton";
+import RecentTimelinePreview from "./tabs/home/RecentTimelinePreview";
 import HomeModule from "./tabs/HomeModule";
 import CoachModule from "./tabs/CoachModule";
 import TimelineModule from "./tabs/TimelineModule";
 import ReportModule from "./tabs/ReportModule";
+import ProfileModule from "./tabs/ProfileModule";
 import PremiumModule from "./tabs/PremiumModule";
 
 const NAVER_BAND_URL = "https://band.us/@jointrun";
@@ -65,13 +71,10 @@ const [lastScanScores, setLastScanScores] = useState({
 });
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
-// 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화(직전 스캔 대비)" 계산용.
-// null = 아직 로딩 전, []/[1개]/[2개]로 스캔 개수를 판정한다 (2개 이상은 더 가져올 필요 없음).
+// 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화" 상대 비교(§5, RelativeChangeCard) 계산용.
+// null = 아직 로딩 전. rolling window(3주/1개월) 비교를 위해 최근 스캔을 넉넉히 가져온다.
 const [recentScans, setRecentScans] = useState(null);
 const scanCount = recentScans === null ? null : recentScans.length;
-const recentChange = recentScans && recentScans.length >= 2
-  ? { delta: (recentScans[0].scores?.total ?? 0) - (recentScans[1].scores?.total ?? 0) }
-  : null;
 const mobilityTrendUp = !!(recentScans && recentScans.length >= 2 &&
   (recentScans[0].scores?.mobility?.value ?? 0) > (recentScans[1].scores?.mobility?.value ?? 0));
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
@@ -80,6 +83,8 @@ const habitScore = computeHabitScore(activeDayKeys);
 // 독립 온보딩 페이지 표시 여부. true: edit 모드(마이페이지에서 재방문) → 완료 시 "뒤로" 취소 가능.
 const [showOnboardingPage, setShowOnboardingPage] = useState(false);
 const [onboardingEditMode, setOnboardingEditMode] = useState(false);
+// timeline_created KPI(§8) 판정용 — events 보유 여부. null = 아직 확인 전.
+const [hasAnyEvent, setHasAnyEvent] = useState(null);
 
 // 스캔/체크인이 있을 때마다 호출 — Habit Score 활동일 기록을 로컬(즉시 반영)과 Firestore에 함께 남긴다.
 const recordActivity = (uid) => {
@@ -103,8 +108,8 @@ useEffect(() => {
       setShowOnboardingPage(true);
     }
 
-    // 최근 2개만 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화(직전 스캔 대비)" 계산에 그 이상은 필요 없다.
-    const rows = await getScanHistory(currentUser.uid, 2);
+    // 최근 30개를 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화" 3주/1개월 rolling window 비교에 쓰인다.
+    const rows = await getScanHistory(currentUser.uid, 30);
     setRecentScans(rows);
     if (rows[0]?.scores) {
       const sc = rows[0].scores;
@@ -125,10 +130,33 @@ useEffect(() => {
 
     const activeDays = await getHabitActivity(currentUser.uid);
     setActiveDayKeys(activeDays);
+
+    const existingEvents = await getEventHistory(currentUser.uid, 1);
+    setHasAnyEvent(existingEvents.length > 0);
   })();
 }, [currentUser?.uid]);
 
+// timeline_created(§8 North Star) — scans 1건 + events 1건을 모두 보유하게 된 최초 시점에 정확히 1회만 발생시킨다.
+// Cloud Function 없이 클라이언트에서 판정하므로, Firestore profile의 timelineCreated 플래그로 중복 발생을 막는다.
+useEffect(() => {
+  if (!currentUser || scanCount == null || hasAnyEvent == null) return;
+  if (scanCount >= 1 && hasAnyEvent && !userProfile.timelineCreated) {
+    trackKpiEvent("timeline_created", currentUser.uid);
+    saveProfileSnapshot(currentUser.uid, { timelineCreated: true }).catch(err => console.error("timeline_created 플래그 저장 실패:", err));
+    setUserProfile(prev => ({ ...prev, timelineCreated: true }));
+  }
+}, [currentUser, scanCount, hasAnyEvent, userProfile.timelineCreated]);
+
+  // 오프라인 상태에서 입력된 기록(events)을 재연결 시 동기화 — 앱 진입 시 1회 + 온라인 복귀 시마다 재시도.
+  useEffect(() => {
+    if (!currentUser) return;
+    flushPendingEvents();
+    window.addEventListener("online", flushPendingEvents);
+    return () => window.removeEventListener("online", flushPendingEvents);
+  }, [currentUser?.uid]);
+
   const [activeTab, setActiveTab] = useState("home");
+  const [showEventMarker, setShowEventMarker] = useState(false);
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [activeSpecSection, setActiveSpecSection] = useState(1);
@@ -158,8 +186,13 @@ useEffect(() => {
 
     const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
     setUserProfile(updated);
-    // 홈 화면 상태(Empty/First Scan/Normal) 판정 + "최근 변화"가 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
-    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 2));
+    // return_scan(§8) — 이전 스캔이 이미 있던 상태에서(재방문) 새 스캔을 완료한 경우에만 발생.
+    if (currentUser && scanCount >= 1) {
+      trackKpiEvent("return_scan", currentUser.uid);
+    }
+    // 홈 화면 상태(Empty/First Scan/Normal) 판정이 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
+    // rolling window 비교(RelativeChangeCard)에 쓰이는 과거 기록이 잘리지 않도록 30개까지 유지한다.
+    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 30));
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
@@ -211,13 +244,14 @@ useEffect(() => {
 
   const triggerDoctorReportPrint = () => { triggerFeedback("대학병원 제출용 AI 안심 리포트 PDF가 생성되었습니다."); setShowDoctorReport(true); };
 
+  // 작업지시서 항목 3(정보구조 개편): HOME/SCAN/TIMELINE/REPORT/PROFILE 5탭 고정.
+  // 기존 AI코치·커뮤니티 탭은 없애지 않고 PROFILE 화면 안의 진입점으로 재배치했다(기능 자체는 유지).
   const TAB_CONFIG = [
     { id: "home", icon: Compass, label: "홈" },
     { id: "scan", icon: Camera, label: "모션스캔", fab: true },
-    { id: "coach", icon: MessageSquare, label: "AI코치" },
-    { id: "progress", icon: TrendingUp, label: "회복추이" },
-    { id: "health", icon: Activity, label: "나의건강" },
-    { id: "premium", icon: Users, label: "커뮤니티", externalUrl: NAVER_BAND_URL },
+    { id: "timeline", icon: TrendingUp, label: "타임라인" },
+    { id: "report", icon: Activity, label: "리포트" },
+    { id: "profile", icon: User, label: "프로필" },
   ];
 
   if (showOnboardingPage) {
@@ -243,14 +277,13 @@ useEffect(() => {
       position:"relative",
     }}>
 
-      {/* ── 앱 상단 헤더 (앱 이름 + 로그아웃) ── */}
+      {/* ── 앱 상단 헤더 (앱 이름) — 로그아웃은 PROFILE 탭으로 이동 ── */}
       <div style={{
         background:"white",
         borderBottom:"0.5px solid #e2e8f0",
         padding:"10px 16px",
         display:"flex",
         alignItems:"center",
-        justifyContent:"space-between",
         position:"sticky",
         top:0,
         zIndex:50,
@@ -259,10 +292,6 @@ useEffect(() => {
           <img src="/icons/icon-96.png" alt="JOINTRUN" style={{width:30,height:30,borderRadius:8}} />
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
-        <button onClick={logout}
-          style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
-          <LogOut style={{width:13,height:13}} />로그아웃
-        </button>
       </div>
 
       {/* ── 앱 스크롤 콘텐츠 ── */}
@@ -270,7 +299,9 @@ useEffect(() => {
 
             {/* App content */}
               {activeTab === "home" && (
-                scanCount === 0 ? (
+                scanCount === null ? (
+                  <HomeSkeleton />
+                ) : scanCount === 0 ? (
                   <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
                 ) : (
                 <div>
@@ -296,18 +327,35 @@ useEffect(() => {
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
+                  {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지 */}
+                  <button onClick={() => setActiveTab("scan")}
+                    style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                    <Camera style={{width:14,height:14}} />30초 스캔 시작하기
+                  </button>
                   {scanCount === 1 ? (
-                    <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} />
+                    <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   ) : (
-                    <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} recentChange={recentChange} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} />
+                    <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
+                  <div style={{marginTop:12}}>
+                    <RecentTimelinePreview currentUser={currentUser} setActiveTab={setActiveTab} />
+                  </div>
                 </div>
                 )
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
-              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} />}
-              {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }} />}
+              {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
+              {activeTab === "report" && <ReportModule currentProfile={currentProfile} scans={recentScans} />}
+              {activeTab === "profile" && (
+                <ProfileModule
+                  currentProfile={currentProfile}
+                  onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }}
+                  onOpenCoach={() => setActiveTab("coach")}
+                  communityUrl={NAVER_BAND_URL}
+                  logout={logout}
+                />
+              )}
 
 
       </main>
@@ -393,6 +441,16 @@ useEffect(() => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* EVENT MARKER MODAL */}
+      {showEventMarker && currentUser && (
+        <EventMarkerModal
+          uid={currentUser.uid}
+          onClose={() => setShowEventMarker(false)}
+          onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
+          triggerFeedback={triggerFeedback}
+        />
       )}
 
       {/* CALIBRATOR MODAL */}
