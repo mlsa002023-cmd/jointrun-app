@@ -96,7 +96,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
       </div>
 
       {selectedEvent && (
-        <EventDetailModal event={selectedEvent} scans={scans} onClose={() => setSelectedEvent(null)} />
+        <EventDetailModal event={selectedEvent} scans={scans} uid={currentUser?.uid} onClose={() => setSelectedEvent(null)} />
       )}
 
       {loading ? (

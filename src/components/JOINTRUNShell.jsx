@@ -8,9 +8,10 @@ import MotionScanPage from "./MotionScanPage";
 import OnboardingScreen from "./OnboardingScreen";
 import {
   saveScanRecord, saveCheckIn, saveProfileSnapshot, getProfileSnapshot,
-  getScanHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+  getScanHistory, getEventHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
   flushPendingEvents,
 } from "../lib/firestore";
+import { trackKpiEvent } from "../lib/analytics";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -82,6 +83,8 @@ const habitScore = computeHabitScore(activeDayKeys);
 // 독립 온보딩 페이지 표시 여부. true: edit 모드(마이페이지에서 재방문) → 완료 시 "뒤로" 취소 가능.
 const [showOnboardingPage, setShowOnboardingPage] = useState(false);
 const [onboardingEditMode, setOnboardingEditMode] = useState(false);
+// timeline_created KPI(§8) 판정용 — events 보유 여부. null = 아직 확인 전.
+const [hasAnyEvent, setHasAnyEvent] = useState(null);
 
 // 스캔/체크인이 있을 때마다 호출 — Habit Score 활동일 기록을 로컬(즉시 반영)과 Firestore에 함께 남긴다.
 const recordActivity = (uid) => {
@@ -127,8 +130,22 @@ useEffect(() => {
 
     const activeDays = await getHabitActivity(currentUser.uid);
     setActiveDayKeys(activeDays);
+
+    const existingEvents = await getEventHistory(currentUser.uid, 1);
+    setHasAnyEvent(existingEvents.length > 0);
   })();
 }, [currentUser?.uid]);
+
+// timeline_created(§8 North Star) — scans 1건 + events 1건을 모두 보유하게 된 최초 시점에 정확히 1회만 발생시킨다.
+// Cloud Function 없이 클라이언트에서 판정하므로, Firestore profile의 timelineCreated 플래그로 중복 발생을 막는다.
+useEffect(() => {
+  if (!currentUser || scanCount == null || hasAnyEvent == null) return;
+  if (scanCount >= 1 && hasAnyEvent && !userProfile.timelineCreated) {
+    trackKpiEvent("timeline_created", currentUser.uid);
+    saveProfileSnapshot(currentUser.uid, { timelineCreated: true }).catch(err => console.error("timeline_created 플래그 저장 실패:", err));
+    setUserProfile(prev => ({ ...prev, timelineCreated: true }));
+  }
+}, [currentUser, scanCount, hasAnyEvent, userProfile.timelineCreated]);
 
   // 오프라인 상태에서 입력된 기록(events)을 재연결 시 동기화 — 앱 진입 시 1회 + 온라인 복귀 시마다 재시도.
   useEffect(() => {
@@ -169,6 +186,10 @@ useEffect(() => {
 
     const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
     setUserProfile(updated);
+    // return_scan(§8) — 이전 스캔이 이미 있던 상태에서(재방문) 새 스캔을 완료한 경우에만 발생.
+    if (currentUser && scanCount >= 1) {
+      trackKpiEvent("return_scan", currentUser.uid);
+    }
     // 홈 화면 상태(Empty/First Scan/Normal) 판정이 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
     // rolling window 비교(RelativeChangeCard)에 쓰이는 과거 기록이 잘리지 않도록 30개까지 유지한다.
     setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 30));
@@ -427,7 +448,7 @@ useEffect(() => {
         <EventMarkerModal
           uid={currentUser.uid}
           onClose={() => setShowEventMarker(false)}
-          onSaved={() => recordActivity(currentUser.uid)}
+          onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}
         />
       )}

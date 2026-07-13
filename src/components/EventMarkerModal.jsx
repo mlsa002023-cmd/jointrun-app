@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { EVENT_TYPES, CUSTOM_EVENT_TYPE } from "../lib/eventTypes";
 import { saveEvent } from "../lib/firestore";
+import { trackKpiEvent } from "../lib/analytics";
 
 function toLocalInputValue(date) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -23,6 +24,7 @@ function EventMarkerModal({ uid, onClose, onSaved, triggerFeedback }) {
     const record = { type, label, memo, timestamp: new Date(timestamp) };
     const id = await saveEvent(uid, record);
     setSaving(false);
+    trackKpiEvent("event_marker_created", uid, { type }); // §8 — Decision Log 작성률
     triggerFeedback?.(`${label} 기록 완료!`);
     onSaved?.({ id, ...record });
     onClose();

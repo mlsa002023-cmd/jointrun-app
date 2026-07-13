@@ -1,12 +1,19 @@
+import { useEffect } from "react";
 import { X } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip } from "recharts";
 import { computeEventComparison } from "../lib/eventComparison";
 import { formatTimelineDate } from "../lib/mergeTimeline";
+import { trackKpiEvent } from "../lib/analytics";
 
 // Decision Log 드릴다운 — 이벤트 전후 N주 Finger Score를 비교하는 미니 그래프(작업지시서 §6.1).
 // 관찰된 평균만 서술한다 — 원인 진단이나 행동 권고 문구는 넣지 않는다(§5.2 카피 가이드라인 공유).
-function EventDetailModal({ event, scans, onClose }) {
+function EventDetailModal({ event, scans, uid, onClose }) {
   const { before, after, beforeAvg, afterAvg, hasEnoughData, windowWeeks } = computeEventComparison(event, scans);
+
+  // history_comparison_viewed(§8) — 실제로 전후 비교가 표시된 경우에만, 이벤트당 1회 발생(데이터 부족 안내는 제외).
+  useEffect(() => {
+    if (hasEnoughData) trackKpiEvent("history_comparison_viewed", uid, { eventType: event.type });
+  }, [event.id]);
 
   const chartData = [
     ...before.map((s) => ({ dayOffset: Math.round((s.date.getTime() - event.date.getTime()) / 86400000), before: s.score, after: null })),
