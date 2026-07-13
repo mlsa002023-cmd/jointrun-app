@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Activity, Camera, Compass, LogOut, MessageSquare, Printer,
-  Settings, TrendingUp, Users, Volume2, Zap
+  Activity, Camera, Compass, Printer,
+  Settings, TrendingUp, User, Volume2, Zap
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import MotionScanPage from "./MotionScanPage";
@@ -20,10 +20,13 @@ import { computeHabitScore, todayKey } from "../lib/habitScore";
 import { PATIENT_PROFILES_DEFAULT, DEFAULT_STEPS } from "../data/mockProfiles";
 import EmptyHomeState from "./tabs/home/EmptyHomeState";
 import FirstScanHomeState from "./tabs/home/FirstScanHomeState";
+import HomeSkeleton from "./tabs/home/HomeSkeleton";
+import RecentTimelinePreview from "./tabs/home/RecentTimelinePreview";
 import HomeModule from "./tabs/HomeModule";
 import CoachModule from "./tabs/CoachModule";
 import TimelineModule from "./tabs/TimelineModule";
 import ReportModule from "./tabs/ReportModule";
+import ProfileModule from "./tabs/ProfileModule";
 import PremiumModule from "./tabs/PremiumModule";
 
 const NAVER_BAND_URL = "https://band.us/@jointrun";
@@ -222,13 +225,14 @@ useEffect(() => {
 
   const triggerDoctorReportPrint = () => { triggerFeedback("대학병원 제출용 AI 안심 리포트 PDF가 생성되었습니다."); setShowDoctorReport(true); };
 
+  // 작업지시서 항목 3(정보구조 개편): HOME/SCAN/TIMELINE/REPORT/PROFILE 5탭 고정.
+  // 기존 AI코치·커뮤니티 탭은 없애지 않고 PROFILE 화면 안의 진입점으로 재배치했다(기능 자체는 유지).
   const TAB_CONFIG = [
     { id: "home", icon: Compass, label: "홈" },
     { id: "scan", icon: Camera, label: "모션스캔", fab: true },
-    { id: "coach", icon: MessageSquare, label: "AI코치" },
-    { id: "progress", icon: TrendingUp, label: "회복추이" },
-    { id: "health", icon: Activity, label: "나의건강" },
-    { id: "premium", icon: Users, label: "커뮤니티", externalUrl: NAVER_BAND_URL },
+    { id: "timeline", icon: TrendingUp, label: "타임라인" },
+    { id: "report", icon: Activity, label: "리포트" },
+    { id: "profile", icon: User, label: "프로필" },
   ];
 
   if (showOnboardingPage) {
@@ -254,14 +258,13 @@ useEffect(() => {
       position:"relative",
     }}>
 
-      {/* ── 앱 상단 헤더 (앱 이름 + 로그아웃) ── */}
+      {/* ── 앱 상단 헤더 (앱 이름) — 로그아웃은 PROFILE 탭으로 이동 ── */}
       <div style={{
         background:"white",
         borderBottom:"0.5px solid #e2e8f0",
         padding:"10px 16px",
         display:"flex",
         alignItems:"center",
-        justifyContent:"space-between",
         position:"sticky",
         top:0,
         zIndex:50,
@@ -270,10 +273,6 @@ useEffect(() => {
           <img src="/icons/icon-96.png" alt="JOINTRUN" style={{width:30,height:30,borderRadius:8}} />
           <span style={{fontSize:15,fontWeight:900,letterSpacing:"-0.5px",color:"#0f172a"}}>JOINTRUN</span>
         </div>
-        <button onClick={logout}
-          style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
-          <LogOut style={{width:13,height:13}} />로그아웃
-        </button>
       </div>
 
       {/* ── 앱 스크롤 콘텐츠 ── */}
@@ -281,7 +280,9 @@ useEffect(() => {
 
             {/* App content */}
               {activeTab === "home" && (
-                scanCount === 0 ? (
+                scanCount === null ? (
+                  <HomeSkeleton />
+                ) : scanCount === 0 ? (
                   <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
                 ) : (
                 <div>
@@ -307,18 +308,35 @@ useEffect(() => {
                       <Settings style={{width:12,height:12}} />기기 조율
                     </button>
                   </div>
+                  {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지 */}
+                  <button onClick={() => setActiveTab("scan")}
+                    style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                    <Camera style={{width:14,height:14}} />30초 스캔 시작하기
+                  </button>
                   {scanCount === 1 ? (
                     <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   ) : (
                     <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} recentChange={recentChange} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
+                  <div style={{marginTop:12}}>
+                    <RecentTimelinePreview currentUser={currentUser} setActiveTab={setActiveTab} />
+                  </div>
                 </div>
                 )
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
-              {activeTab === "progress" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
-              {activeTab === "health" && <ReportModule currentProfile={currentProfile} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }} />}
+              {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
+              {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
+              {activeTab === "profile" && (
+                <ProfileModule
+                  currentProfile={currentProfile}
+                  onEditConcernArea={() => { setOnboardingEditMode(true); setShowOnboardingPage(true); }}
+                  onOpenCoach={() => setActiveTab("coach")}
+                  communityUrl={NAVER_BAND_URL}
+                  logout={logout}
+                />
+              )}
 
 
       </main>
