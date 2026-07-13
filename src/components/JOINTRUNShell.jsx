@@ -70,13 +70,10 @@ const [lastScanScores, setLastScanScores] = useState({
 });
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
-// 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화(직전 스캔 대비)" 계산용.
-// null = 아직 로딩 전, []/[1개]/[2개]로 스캔 개수를 판정한다 (2개 이상은 더 가져올 필요 없음).
+// 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화" 상대 비교(§5, RelativeChangeCard) 계산용.
+// null = 아직 로딩 전. rolling window(3주/1개월) 비교를 위해 최근 스캔을 넉넉히 가져온다.
 const [recentScans, setRecentScans] = useState(null);
 const scanCount = recentScans === null ? null : recentScans.length;
-const recentChange = recentScans && recentScans.length >= 2
-  ? { delta: (recentScans[0].scores?.total ?? 0) - (recentScans[1].scores?.total ?? 0) }
-  : null;
 const mobilityTrendUp = !!(recentScans && recentScans.length >= 2 &&
   (recentScans[0].scores?.mobility?.value ?? 0) > (recentScans[1].scores?.mobility?.value ?? 0));
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
@@ -108,8 +105,8 @@ useEffect(() => {
       setShowOnboardingPage(true);
     }
 
-    // 최근 2개만 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화(직전 스캔 대비)" 계산에 그 이상은 필요 없다.
-    const rows = await getScanHistory(currentUser.uid, 2);
+    // 최근 30개를 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화" 3주/1개월 rolling window 비교에 쓰인다.
+    const rows = await getScanHistory(currentUser.uid, 30);
     setRecentScans(rows);
     if (rows[0]?.scores) {
       const sc = rows[0].scores;
@@ -172,8 +169,9 @@ useEffect(() => {
 
     const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
     setUserProfile(updated);
-    // 홈 화면 상태(Empty/First Scan/Normal) 판정 + "최근 변화"가 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
-    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 2));
+    // 홈 화면 상태(Empty/First Scan/Normal) 판정이 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
+    // rolling window 비교(RelativeChangeCard)에 쓰이는 과거 기록이 잘리지 않도록 30개까지 유지한다.
+    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 30));
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
@@ -314,9 +312,9 @@ useEffect(() => {
                     <Camera style={{width:14,height:14}} />30초 스캔 시작하기
                   </button>
                   {scanCount === 1 ? (
-                    <FirstScanHomeState currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                    <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   ) : (
-                    <HomeModule currentProfile={currentProfile} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} recentChange={recentChange} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                    <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
                   <div style={{marginTop:12}}>
                     <RecentTimelinePreview currentUser={currentUser} setActiveTab={setActiveTab} />
