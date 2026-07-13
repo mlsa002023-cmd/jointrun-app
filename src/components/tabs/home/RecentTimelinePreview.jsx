@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { getScanHistory, getEventHistory } from "../../../lib/firestore";
 import { mergeScansAndEvents, formatTimelineDate } from "../../../lib/mergeTimeline";
+import { getTimelineIcon } from "../../../lib/eventIcons";
 
 // HOME의 "최근 Timeline 요약" — scans+events 병합 리스트의 최신 3건만 보여주고,
 // 전체 목록/기간별 비교는 TIMELINE 탭(전체 병합 뷰)에서 다룬다.
@@ -38,13 +39,16 @@ function RecentTimelinePreview({ currentUser, setActiveTab }) {
         <p className="text-[10px] text-slate-400 py-2">아직 기록이 없습니다.</p>
       ) : (
         <div className="space-y-1.5">
-          {items.map((item) => (
-            <div key={`${item.kind}-${item.id}`} className="flex items-center gap-2 text-[11px] text-slate-700">
-              <span className="text-slate-400 shrink-0">{formatTimelineDate(item.date)}</span>
-              <span className={item.kind === "scan" ? "text-blue-500" : "text-orange-500"}>●</span>
-              <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
-            </div>
-          ))}
+          {items.map((item) => {
+            const Icon = getTimelineIcon(item);
+            return (
+              <div key={`${item.kind}-${item.id}`} className="flex items-center gap-2 text-[11px] text-slate-700">
+                <span className="text-slate-400 shrink-0">{formatTimelineDate(item.date)}</span>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
+                <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
