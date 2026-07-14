@@ -30,4 +30,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["@mediapipe/tasks-vision"],
   },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.js"],
+  },
 });
