@@ -1,23 +1,23 @@
-import { detectPattern } from "../lib/detectPattern";
+import JTCard from "./ui/JTCard";
+import { PatternDetector } from "../domain/PatternDetector";
 
 // "패턴 관찰" 카드 — HOME과 REPORT 양쪽에서 재사용(작업지시서 §7.1).
 // getTodayAction의 "오늘의 행동" 추천과는 별개로, 최근 기록의 관찰 사실만 보여준다.
+// 판정은 PatternDetector(도메인 서비스)에게만 맡긴다 — 여기서 새 판정 로직을 만들지 않는다.
 function PatternInsightCard({ scans }) {
-  const { status, message } = detectPattern(scans);
-  const toneClass =
-    status === "declining"
-      ? "bg-amber-50 border-amber-200 text-amber-800"
-      : status === "volatile"
-      ? "bg-amber-50 border-amber-200 text-amber-700"
-      : status === "insufficient"
-      ? "bg-slate-50 border-slate-200 text-slate-500"
-      : "bg-blue-50 border-blue-200 text-blue-800";
+  const { status, message } = PatternDetector.detect(scans);
+  const tone = status === "insufficient" ? "muted" : status === "stable" ? "info" : "warning";
+  const textClass =
+    status === "declining" ? "text-amber-800"
+    : status === "volatile" ? "text-amber-700"
+    : status === "insufficient" ? "text-slate-500"
+    : "text-blue-800";
 
   return (
-    <div className={`border rounded-2xl p-3 shadow-sm ${toneClass}`}>
+    <JTCard tone={tone} className={textClass}>
       <h4 className="text-xs font-bold mb-1">패턴 관찰</h4>
       <p className="text-[11px] leading-relaxed">{message}</p>
-    </div>
+    </JTCard>
   );
 }
 

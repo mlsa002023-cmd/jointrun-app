@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Check, Flame, Plus } from "lucide-react";
+import JTCard from "../../ui/JTCard";
+import JTButton from "../../ui/JTButton";
 
 // "기록하기" 섹션 — 컨디션 체크인(붓기/피로도) + 오늘의 회복 미션. First Scan/Normal 공통.
 function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onCheckIn, onConditionCheckIn, onOpenEventMarker }) {
@@ -31,12 +33,11 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
 
   return (
     <>
-      <button onClick={() => onOpenEventMarker?.()}
-        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
-        <Plus className="w-4 h-4" />기록 추가
-      </button>
+      <JTButton variant="outline" icon={Plus} onClick={() => onOpenEventMarker?.()}>
+        기록 추가
+      </JTButton>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <JTCard>
         <h4 className="text-xs font-bold text-slate-900 mb-2">기록하기 — 오늘의 컨디션 체크인</h4>
         <div className="space-y-2.5">
           <label className="block">
@@ -60,9 +61,9 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
             체크인 반영하기
           </button>
         </div>
-      </div>
+      </JTCard>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <JTCard>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1">
             <Flame className="w-4 h-4 text-orange-500" />오늘의 회복 미션
@@ -87,7 +88,7 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
             </div>
           ))}
         </div>
-      </div>
+      </JTCard>
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useHomeData } from "./useHomeData";
 import * as firestoreLib from "../lib/firestore";
 
@@ -34,5 +34,17 @@ describe("useHomeData", () => {
     const { result } = renderHook(() => useHomeData());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.mobilityTrendUp).toBe(false);
+  });
+
+  it("addOptimisticScan prepends immediately without a refetch (no live Firestore in demo mode)", async () => {
+    firestoreLib.getScanHistory.mockResolvedValue([]);
+    const { result } = renderHook(() => useHomeData());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.scanCount).toBe(0);
+
+    act(() => result.current.addOptimisticScan({ total: 82 }));
+
+    expect(result.current.scanCount).toBe(1);
+    expect(result.current.scans[0].scores.total).toBe(82);
   });
 });
