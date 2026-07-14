@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Activity, Camera, Compass, Printer,
   Settings, TrendingUp, User, Volume2, Zap
@@ -8,10 +8,11 @@ import MotionScanPage from "./MotionScanPage";
 import OnboardingScreen from "./OnboardingScreen";
 import {
   saveScanRecord, saveCheckIn, saveProfileSnapshot, getProfileSnapshot,
-  getScanHistory, getEventHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
+  getEventHistory, getLatestConditionCheckIn, recordHabitActivity, getHabitActivity,
   flushPendingEvents,
 } from "../lib/firestore";
 import { trackKpiEvent } from "../lib/analytics";
+import { useHomeData } from "../hooks/useHomeData";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -72,11 +73,9 @@ const [lastScanScores, setLastScanScores] = useState({
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
 // 홈 화면 상태(Empty/First Scan/Normal) 분기 + "최근 변화" 상대 비교(§5, RelativeChangeCard) 계산용.
-// null = 아직 로딩 전. rolling window(3주/1개월) 비교를 위해 최근 스캔을 넉넉히 가져온다.
-const [recentScans, setRecentScans] = useState(null);
-const scanCount = recentScans === null ? null : recentScans.length;
-const mobilityTrendUp = !!(recentScans && recentScans.length >= 2 &&
-  (recentScans[0].scores?.mobility?.value ?? 0) > (recentScans[1].scores?.mobility?.value ?? 0));
+// scanCount는 SCAN 탭(홈이 마운트되어 있지 않을 수 있는 시점)의 KPI 판정에도 쓰이므로,
+// 이 훅을 최상위(JOINTRUNShell)에서 호출해 탭 전환과 무관하게 유지한다.
+const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = useHomeData();
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -93,7 +92,8 @@ const recordActivity = (uid) => {
   if (uid) recordHabitActivity(uid, key).catch(err => console.error("습관 활동 기록 실패:", err));
 };
 
-// 로그인 시 Firestore 스냅샷 + 최근 스캔 하위 점수 + 최근 컨디션 체크인 + 습관 활동 이력을 불러와 반영
+// 로그인 시 Firestore 스냅샷 + 최근 컨디션 체크인 + 습관 활동 이력을 불러와 반영.
+// 스캔 목록 자체는 useHomeData()가 담당한다(위) — 여기서는 중복 조회하지 않는다.
 useEffect(() => {
   if (!currentUser) return;
   setUserProfile(buildUserProfile(currentUser));
@@ -106,18 +106,6 @@ useEffect(() => {
     if (!snapshot?.concernArea) {
       setOnboardingEditMode(false);
       setShowOnboardingPage(true);
-    }
-
-    // 최근 30개를 가져온다 — 홈 화면 상태 판정(scanCount)과 "최근 변화" 3주/1개월 rolling window 비교에 쓰인다.
-    const rows = await getScanHistory(currentUser.uid, 30);
-    setRecentScans(rows);
-    if (rows[0]?.scores) {
-      const sc = rows[0].scores;
-      setLastScanScores({
-        mobility: sc.mobility ?? NEUTRAL_SUBSCORE,
-        stability: sc.stability ?? NEUTRAL_SUBSCORE,
-        stiffnessComponent: sc.recovery?.stiffnessComponent ?? null,
-      });
     }
 
     const lastCondition = await getLatestConditionCheckIn(currentUser.uid);
@@ -135,6 +123,22 @@ useEffect(() => {
     setHasAnyEvent(existingEvents.length > 0);
   })();
 }, [currentUser?.uid]);
+
+// useHomeData()가 최근 스캔을 불러오면 그중 최신 1건의 하위 점수로 lastScanScores를 1회만 시딩한다.
+// ref로 가드하는 이유: addOptimisticScan으로 recentScans가 이후에도 계속 바뀌는데, 그때마다
+// 재시딩하면 handleScanCompleted가 이미 직접 setLastScanScores한 값을 덮어쓸 위험이 있다.
+const lastScanSeededRef = useRef(false);
+useEffect(() => {
+  if (lastScanSeededRef.current || !recentScans || recentScans.length === 0) return;
+  const sc = recentScans[0]?.scores;
+  if (!sc) return;
+  lastScanSeededRef.current = true;
+  setLastScanScores({
+    mobility: sc.mobility ?? NEUTRAL_SUBSCORE,
+    stability: sc.stability ?? NEUTRAL_SUBSCORE,
+    stiffnessComponent: sc.recovery?.stiffnessComponent ?? null,
+  });
+}, [recentScans]);
 
 // timeline_created(§8 North Star) — scans 1건 + events 1건을 모두 보유하게 된 최초 시점에 정확히 1회만 발생시킨다.
 // Cloud Function 없이 클라이언트에서 판정하므로, Firestore profile의 timelineCreated 플래그로 중복 발생을 막는다.
@@ -169,7 +173,7 @@ useEffect(() => {
 
   const triggerFeedback = useCallback((msg) => {
     setFeedbackMsg(msg);
-    if ("vibrate" in navigator) { try { navigator.vibrate(40); } catch {} }
+    if ("vibrate" in navigator) { try { navigator.vibrate(40); } catch { /* 진동 미지원 기기 무시 */ } }
     setTimeout(() => setFeedbackMsg(null), 2500);
   }, []);
 
@@ -191,8 +195,7 @@ useEffect(() => {
       trackKpiEvent("return_scan", currentUser.uid);
     }
     // 홈 화면 상태(Empty/First Scan/Normal) 판정이 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
-    // rolling window 비교(RelativeChangeCard)에 쓰이는 과거 기록이 잘리지 않도록 30개까지 유지한다.
-    setRecentScans(prev => [{ scores: healthScore }, ...(prev ?? [])].slice(0, 30));
+    addOptimisticScan(healthScore);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     if (currentUser) {
       saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
@@ -338,7 +341,7 @@ useEffect(() => {
                     <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
                   <div style={{marginTop:12}}>
-                    <RecentTimelinePreview currentUser={currentUser} setActiveTab={setActiveTab} />
+                    <RecentTimelinePreview setActiveTab={setActiveTab} />
                   </div>
                 </div>
                 )
@@ -346,7 +349,7 @@ useEffect(() => {
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
-              {activeTab === "report" && <ReportModule currentProfile={currentProfile} scans={recentScans} />}
+              {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
               {activeTab === "profile" && (
                 <ProfileModule
                   currentProfile={currentProfile}
@@ -446,7 +449,6 @@ useEffect(() => {
       {/* EVENT MARKER MODAL */}
       {showEventMarker && currentUser && (
         <EventMarkerModal
-          uid={currentUser.uid}
           onClose={() => setShowEventMarker(false)}
           onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}

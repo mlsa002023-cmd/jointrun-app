@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Check, Flame, Plus } from "lucide-react";
+import JTButton from "../../ui/JTButton";
+import JTSection from "../../ui/JTSection";
 
 // "기록하기" 섹션 — 컨디션 체크인(붓기/피로도) + 오늘의 회복 미션. First Scan/Normal 공통.
 function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setActiveTab, triggerFeedback, onCheckIn, onConditionCheckIn, onOpenEventMarker }) {
@@ -31,13 +33,11 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
 
   return (
     <>
-      <button onClick={() => onOpenEventMarker?.()}
-        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
-        <Plus className="w-4 h-4" />기록 추가
-      </button>
+      <JTButton variant="outline" icon={Plus} onClick={() => onOpenEventMarker?.()}>
+        기록 추가
+      </JTButton>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-        <h4 className="text-xs font-bold text-slate-900 mb-2">기록하기 — 오늘의 컨디션 체크인</h4>
+      <JTSection title="기록하기 — 오늘의 컨디션 체크인">
         <div className="space-y-2.5">
           <label className="block">
             <div className="flex justify-between text-[10px] text-slate-500 mb-1">
@@ -60,15 +60,12 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
             체크인 반영하기
           </button>
         </div>
-      </div>
+      </JTSection>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1">
-            <Flame className="w-4 h-4 text-orange-500" />오늘의 회복 미션
-          </h4>
-          <span className="text-[10px] text-blue-600 font-bold">{completedCount}/{recoverySteps.length}</span>
-        </div>
+      <JTSection
+        title={<span className="flex items-center gap-1"><Flame className="w-4 h-4 text-orange-500" />오늘의 회복 미션</span>}
+        trailing={<span className="text-[10px] text-blue-600 font-bold">{completedCount}/{recoverySteps.length}</span>}
+      >
         <div className="space-y-1.5">
           {recoverySteps.map(step => (
             <div key={step.id} className={`flex items-center gap-2 p-2 rounded-xl transition-all ${step.isCompleted ? "bg-blue-50 border border-blue-200" : activeStepId === step.id ? "bg-orange-50 border border-orange-200" : "bg-slate-50 border border-slate-100"}`}>
@@ -87,7 +84,7 @@ function RecordSection({ currentProfile, recoverySteps, setRecoverySteps, setAct
             </div>
           ))}
         </div>
-      </div>
+      </JTSection>
     </>
   );
 }

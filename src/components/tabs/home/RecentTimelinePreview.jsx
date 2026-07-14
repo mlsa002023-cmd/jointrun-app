@@ -1,42 +1,30 @@
-import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { getScanHistory, getEventHistory } from "../../../lib/firestore";
-import { mergeScansAndEvents, formatTimelineDate } from "../../../lib/mergeTimeline";
+import JTCard from "../../ui/JTCard";
+import JTSkeleton from "../../ui/JTSkeleton";
+import JTEmptyState from "../../ui/JTEmptyState";
+import { useTimelineData } from "../../../hooks/useTimelineData";
+import { formatTimelineDate } from "../../../lib/mergeTimeline";
 import { getTimelineIcon } from "../../../lib/eventIcons";
 
-// HOME의 "최근 Timeline 요약" — scans+events 병합 리스트의 최신 3건만 보여주고,
-// 전체 목록/기간별 비교는 TIMELINE 탭(전체 병합 뷰)에서 다룬다.
-function RecentTimelinePreview({ currentUser, setActiveTab }) {
-  const [items, setItems] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!currentUser) { setItems([]); return; }
-    (async () => {
-      const [scans, events] = await Promise.all([
-        getScanHistory(currentUser.uid, 5),
-        getEventHistory(currentUser.uid, 5),
-      ]);
-      if (!cancelled) setItems(mergeScansAndEvents(scans, events).slice(0, 3));
-    })();
-    return () => { cancelled = true; };
-  }, [currentUser?.uid]);
+// HOME의 "최근 Timeline 요약" — TIMELINE 탭과 동일한 useTimelineData()를 재사용해 최신 3건만
+// 잘라 보여준다. 예전에는 이 컴포넌트가 getScanHistory/getEventHistory를 직접 호출해
+// TimelineModule/JOINTRUNShell과 같은 fetch 로직이 3곳에 중복돼 있었다 — 이제는 훅 하나뿐이다.
+function RecentTimelinePreview({ setActiveTab }) {
+  const { timelineItems, loading } = useTimelineData();
+  const items = timelineItems.slice(0, 3);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+    <JTCard>
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-xs font-bold text-slate-900">최근 Timeline</h4>
         <button onClick={() => setActiveTab("timeline")} className="text-[10px] font-bold text-blue-600 flex items-center">
           전체보기<ChevronRight className="w-3 h-3" />
         </button>
       </div>
-      {items === null ? (
-        <div className="space-y-1.5">
-          <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-          <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-        </div>
+      {loading ? (
+        <JTSkeleton height={32} count={2} />
       ) : items.length === 0 ? (
-        <p className="text-[10px] text-slate-400 py-2">아직 기록이 없습니다.</p>
+        <JTEmptyState variant="compact" description="아직 기록이 없습니다." />
       ) : (
         <div className="space-y-1.5">
           {items.map((item) => {
@@ -51,7 +39,7 @@ function RecentTimelinePreview({ currentUser, setActiveTab }) {
           })}
         </div>
       )}
-    </div>
+    </JTCard>
   );
 }
 
