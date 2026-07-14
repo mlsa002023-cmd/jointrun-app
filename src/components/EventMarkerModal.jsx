@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { EVENT_TYPES, CUSTOM_EVENT_TYPE } from "../lib/eventTypes";
-import { saveEvent } from "../lib/firestore";
 import { trackKpiEvent } from "../lib/analytics";
+import { useAuth } from "../contexts/AuthContext";
+import { useRecordRepository } from "../hooks/useRecordRepository";
 
 function toLocalInputValue(date) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -11,7 +12,10 @@ function toLocalInputValue(date) {
 
 // 기록 추가 — 타입 칩을 누르면 그 즉시 저장된다(2탭: 진입점 탭 + 타입 탭).
 // custom만 예외적으로 라벨 입력 후 별도 저장 버튼을 탭한다.
-function EventMarkerModal({ uid, onClose, onSaved, triggerFeedback }) {
+// Firestore는 직접 알지 못한다 — recordRepository.addEvent()를 통해서만 쓴다.
+function EventMarkerModal({ onClose, onSaved, triggerFeedback }) {
+  const { currentUser } = useAuth();
+  const repository = useRecordRepository();
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [memo, setMemo] = useState("");
@@ -22,9 +26,9 @@ function EventMarkerModal({ uid, onClose, onSaved, triggerFeedback }) {
     if (saving) return;
     setSaving(true);
     const record = { type, label, memo, timestamp: new Date(timestamp) };
-    const id = await saveEvent(uid, record);
+    const id = await repository.addEvent(record);
     setSaving(false);
-    trackKpiEvent("event_marker_created", uid, { type }); // §8 — Decision Log 작성률
+    trackKpiEvent("event_marker_created", currentUser?.uid, { type }); // §8 — Decision Log 작성률
     triggerFeedback?.(`${label} 기록 완료!`);
     onSaved?.({ id, ...record });
     onClose();
