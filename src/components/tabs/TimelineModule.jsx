@@ -1,42 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Printer, Plus } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as ChartTooltip, BarChart, Bar, Cell
 } from "recharts";
-import { getScanHistory, getEventHistory } from "../../lib/firestore";
-import { mergeScansAndEvents, formatTimelineDate } from "../../lib/mergeTimeline";
+import { formatTimelineDate } from "../../lib/mergeTimeline";
 import { getTimelineIcon } from "../../lib/eventIcons";
+import { useTimelineData } from "../../hooks/useTimelineData";
 import EventDetailModal from "../EventDetailModal";
+import JTCard from "../ui/JTCard";
+import JTButton from "../ui/JTButton";
+import JTSkeleton from "../ui/JTSkeleton";
+import JTEmptyState from "../ui/JTEmptyState";
 
-function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, triggerFeedback, onOpenEventMarker }) {
-  const [scans, setScans] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, onOpenEventMarker }) {
+  const { scans, timelineItems, loading } = useTimelineData();
   const [selectedEvent, setSelectedEvent] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      if (!currentUser) { setLoading(false); return; }
-      try {
-        const [scanRows, eventRows] = await Promise.all([
-          getScanHistory(currentUser.uid, 30),
-          getEventHistory(currentUser.uid, 30),
-        ]);
-        if (!cancelled) { setScans(scanRows); setEvents(eventRows); }
-      } catch (err) {
-        console.error("[JOINTRUN] 타임라인 기록 조회 실패:", err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [currentUser]);
-
-  // scans(측정 기록) + events(행동 기록) 병합 리스트 — 별도의 ACTION 화면 없이 하나의 시간순 리스트로 통합.
-  const timelineItems = mergeScansAndEvents(scans, events);
 
   // Firestore는 최신순(desc)으로 오므로 그래프용으로 오래된 순으로 뒤집고,
   // createdAt(Firestore Timestamp)을 사람이 읽는 날짜 라벨로 변환.
@@ -61,20 +40,16 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         <h2 className="text-sm font-bold text-slate-900">관절 가동 범위(ROM) & 통증 감소 추이</h2>
       </div>
 
-      <button onClick={() => onOpenEventMarker?.()}
-        className="w-full bg-white border border-dashed border-blue-300 text-blue-600 text-xs font-bold py-2.5 rounded-2xl flex items-center justify-center gap-1.5">
-        <Plus className="w-4 h-4" />기록 추가
-      </button>
+      <JTButton variant="outline" icon={Plus} onClick={() => onOpenEventMarker?.()}>
+        기록 추가
+      </JTButton>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <JTCard>
         <h4 className="text-xs font-bold text-slate-900 mb-2">전체 기록</h4>
         {loading ? (
-          <div className="space-y-1.5">
-            <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-            <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-          </div>
+          <JTSkeleton height={32} count={2} />
         ) : timelineItems.length === 0 ? (
-          <p className="text-[10px] text-slate-400 py-2">아직 기록이 없습니다. 스캔을 하거나 기록을 추가해보세요.</p>
+          <JTEmptyState variant="compact" description="아직 기록이 없습니다. 스캔을 하거나 기록을 추가해보세요." />
         ) : (
           <div className="space-y-1">
             {timelineItems.map((item) => {
@@ -93,7 +68,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
             })}
           </div>
         )}
-      </div>
+      </JTCard>
 
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} scans={scans} uid={currentUser?.uid} onClose={() => setSelectedEvent(null)} />
