@@ -449,7 +449,6 @@ useEffect(() => {
       {/* EVENT MARKER MODAL */}
       {showEventMarker && currentUser && (
         <EventMarkerModal
-          uid={currentUser.uid}
           onClose={() => setShowEventMarker(false)}
           onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}
