@@ -8,8 +8,8 @@ import { formatTimelineDate } from "../../lib/mergeTimeline";
 import { getTimelineIcon } from "../../lib/eventIcons";
 import { useTimelineData } from "../../hooks/useTimelineData";
 import EventDetailModal from "../EventDetailModal";
-import JTCard from "../ui/JTCard";
 import JTButton from "../ui/JTButton";
+import JTSection from "../ui/JTSection";
 import JTSkeleton from "../ui/JTSkeleton";
 import JTEmptyState from "../ui/JTEmptyState";
 
@@ -44,8 +44,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         기록 추가
       </JTButton>
 
-      <JTCard>
-        <h4 className="text-xs font-bold text-slate-900 mb-2">전체 기록</h4>
+      <JTSection title="전체 기록">
         {loading ? (
           <JTSkeleton height={32} count={2} />
         ) : timelineItems.length === 0 ? (
@@ -68,7 +67,7 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
             })}
           </div>
         )}
-      </JTCard>
+      </JTSection>
 
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} scans={scans} uid={currentUser?.uid} onClose={() => setSelectedEvent(null)} />
