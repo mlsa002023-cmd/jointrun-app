@@ -169,7 +169,7 @@ useEffect(() => {
 
   const triggerFeedback = useCallback((msg) => {
     setFeedbackMsg(msg);
-    if ("vibrate" in navigator) { try { navigator.vibrate(40); } catch {} }
+    if ("vibrate" in navigator) { try { navigator.vibrate(40); } catch { /* 진동 미지원 기기 무시 */ } }
     setTimeout(() => setFeedbackMsg(null), 2500);
   }, []);
 
