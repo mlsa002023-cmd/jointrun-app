@@ -1,9 +1,14 @@
 import { Printer } from "lucide-react";
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
 import PatternInsightCard from "../PatternInsightCard";
+import JTCard from "../ui/JTCard";
+import { useReportData } from "../../hooks/useReportData";
 
 // REPORT 탭 — 이번 스프린트는 누적 기록 화면 조회 전용. 내보내기/공유(PDF 등)는 다음 스프린트 범위.
-function ReportModule({ currentProfile, scans }) {
+// scans는 더 이상 JOINTRUNShell에서 prop으로 내려받지 않고 useReportData()가 직접 가져온다 —
+// REPORT 탭은 mount될 때만 필요한 데이터라 HOME과 달리 리프에서 훅을 호출해도 무방하다.
+function ReportModule({ currentProfile }) {
+  const { scans } = useReportData();
   const biomarkers = BIOMARKER_METRICS(currentProfile);
   const statusColors = { good:"bg-blue-50 border-blue-200 text-blue-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
@@ -15,15 +20,15 @@ function ReportModule({ currentProfile, scans }) {
         <h2 className="text-sm font-bold text-slate-900">내 손의 디지털 바이오마커</h2>
       </div>
       <PatternInsightCard scans={scans} />
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center space-y-2">
+      <JTCard tone="muted" className="text-center space-y-2">
         <h4 className="text-xs font-bold text-slate-800">대학병원 제출용 소견 PDF</h4>
         <button disabled className="bg-slate-200 text-slate-400 px-4 min-h-11 rounded-xl text-[10px] font-extrabold w-full flex items-center justify-center gap-1 cursor-not-allowed">
           <Printer className="w-3.5 h-3.5" /> 다음 업데이트 예정
         </button>
-      </div>
+      </JTCard>
       <div className="space-y-2">
         {biomarkers.map(b => (
-          <div key={b.name} className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-sm">
+          <JTCard key={b.name} className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-bold text-slate-900">{b.tradeName}</p>
               <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
@@ -32,7 +37,7 @@ function ReportModule({ currentProfile, scans }) {
               <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
               <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
             </div>
-          </div>
+          </JTCard>
         ))}
       </div>
     </div>
