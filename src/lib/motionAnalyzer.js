@@ -62,14 +62,15 @@ export function summarizeFingers(fingers) {
   return { avgScore, avgFlexion };
 }
 
+// 카피 가이드라인(§5.2) — 관찰된 사실만 서술한다. 원인 진단·처방·행동 지시 금지.
 export function buildRecommendation(score, rom) {
   if (score >= 80) {
-    return `손가락 가동 범위 ${rom}°로 양호합니다. 예방적 관리를 위해 보조기를 15° 각도로 설정하고 타이핑 작업 시 정기 스트레칭을 추천합니다.`;
+    return `손가락 가동 범위 ${rom}°로, 최근 측정 중 양호한 범위에 속합니다.`;
   }
   if (score >= 60) {
-    return `Finger Score ${score}점, 굴곡각 ${rom}°입니다. 3분 온수 잼잼 요법으로 관절 윤활액 분비를 촉진하고, 오늘 밤 보조기 착용을 권장합니다.`;
+    return `Finger Score ${score}점, 굴곡각 ${rom}°로 측정되었습니다.`;
   }
-  return `Finger Score ${score}점으로 주의가 필요합니다. 무리한 손 사용을 줄이고, 즉시 따뜻한 물에 손을 5분간 담그신 후 전문의 상담을 권장합니다.`;
+  return `Finger Score ${score}점, 굴곡각 ${rom}°로 평소보다 낮은 범위로 측정되었습니다.`;
 }
 /** 배열의 중앙값을 계산한다. 단일 프레임 노이즈에 흔들리지 않게 하기 위한 핵심 함수. */
 function median(arr) {

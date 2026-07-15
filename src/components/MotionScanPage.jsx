@@ -675,7 +675,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 </div>
               </div>
               <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
-                <strong className="text-slate-900">처방:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
+                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
               </div>
             </div>
             {history.length > 0 && (
