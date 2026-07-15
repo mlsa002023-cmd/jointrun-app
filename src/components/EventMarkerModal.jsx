@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { EVENT_TYPES, CUSTOM_EVENT_TYPE } from "../lib/eventTypes";
 import { trackKpiEvent } from "../lib/analytics";
+import { emitEventSaved } from "../lib/recordEvents";
 import { useAuth } from "../contexts/AuthContext";
 import { useRecordRepository } from "../hooks/useRecordRepository";
 
@@ -30,7 +31,9 @@ function EventMarkerModal({ onClose, onSaved, triggerFeedback }) {
     setSaving(false);
     trackKpiEvent("event_marker_created", currentUser?.uid, { type }); // §8 — Decision Log 작성률
     triggerFeedback?.(`${label} 기록 완료!`);
-    onSaved?.({ id, ...record });
+    const saved = { id, ...record };
+    emitEventSaved(saved); // 마운트된 useTimelineData() 인스턴스가 즉시 반영하도록
+    onSaved?.(saved);
     onClose();
   };
 
