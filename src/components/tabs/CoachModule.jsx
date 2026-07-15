@@ -32,7 +32,7 @@ function CoachModule({ currentProfile, triggerFeedback }) {
       const reply = await callAnthropicCoach(nextMsgs, currentProfile);
       setTyping(false);
       setMessages(prev => [...prev, { id: `c-${Date.now()}`, sender: "coach", text: reply, ts: "방금 전" }]);
-      triggerFeedback("AI 코치 소견이 도착했습니다.");
+      triggerFeedback("AI 코치 답변이 도착했습니다.");
     } catch {
       setTyping(false);
       const fallback = `${currentProfile.name} 님, ${currentProfile.job}으로 인해 손가락 건초 긴장이 누적되었을 수 있습니다. 억지로 꺾지 마시고 3분간 따뜻한 온수 잼잼 요법으로 관절 윤활액 분비를 촉진해 주세요.`;
