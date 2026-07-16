@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "homepage-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4988", "--directory", "/Users/a1/jointrun-homepage"],
+      "port": 4988
+    },
+    {
+      "name": "preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "port": 4173
     }
   ]
 }
