@@ -45,7 +45,7 @@ const buildUserProfile = (user, overrides = {}) => ({
   job: "직업 미등록",
   symptoms: "증상 미등록",
   handCondition: "",
-  fingerHealthScore: DEFAULT_FINGER_HEALTH_SCORE, // 하위 점수 전부 중립값(50)일 때의 가중합 — 스캔 전 기본값
+  fingerHealthScore: DEFAULT_FINGER_HEALTH_SCORE, // null — 스캔 전에는 "측정 전"으로 표시(P0 안전 요건, 50점 중립값 금지)
   fingerAge: 40,
   fingerReserve: 65,
   recoveryScore: 72,
@@ -66,9 +66,10 @@ const [userProfile, setUserProfile] = useState(
 const currentProfile = userProfile;
 
 // 가장 최근 스캔의 객관적 하위 점수(Mobility/Stability/강직 성분) — 다음 컨디션 체크인 때 그대로 재사용된다.
-const NEUTRAL_SUBSCORE = { value: 50, reason: "스캔 전 (중립값)" };
+// 스캔 전에는 50점 중립값이 아니라 null(측정 전)로 둔다(P0 안전 요건).
+const UNMEASURED_SUBSCORE = { value: null, reason: "스캔 전" };
 const [lastScanScores, setLastScanScores] = useState({
-  mobility: NEUTRAL_SUBSCORE, stability: NEUTRAL_SUBSCORE, stiffnessComponent: null,
+  mobility: UNMEASURED_SUBSCORE, stability: UNMEASURED_SUBSCORE, stiffnessComponent: null,
 });
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
@@ -134,8 +135,8 @@ useEffect(() => {
   if (!sc) return;
   lastScanSeededRef.current = true;
   setLastScanScores({
-    mobility: sc.mobility ?? NEUTRAL_SUBSCORE,
-    stability: sc.stability ?? NEUTRAL_SUBSCORE,
+    mobility: sc.mobility ?? UNMEASURED_SUBSCORE,
+    stability: sc.stability ?? UNMEASURED_SUBSCORE,
     stiffnessComponent: sc.recovery?.stiffnessComponent ?? null,
   });
 }, [recentScans]);
@@ -228,7 +229,9 @@ useEffect(() => {
     });
 
     setUserProfile(prev => ({ ...prev, fingerHealthScore: healthScore.total }));
-    triggerFeedback("컨디션 체크인이 Finger Health Score에 반영되었습니다!");
+    triggerFeedback(healthScore.total != null
+      ? "컨디션 체크인이 Finger Health Score에 반영되었습니다!"
+      : "컨디션 체크인이 저장되었습니다. 스캔을 완료하면 Finger Health Score를 볼 수 있어요.");
     if (currentUser) {
       saveCheckIn(currentUser.uid, { swellingLevel, fatigueLevel, fingerHealthScore: healthScore.total }).catch(err => console.error("컨디션 체크인 저장 실패:", err));
       saveProfileSnapshot(currentUser.uid, { fingerHealthScore: healthScore.total }).catch(err => console.error("프로필 스냅샷 저장 실패:", err));
@@ -428,7 +431,7 @@ useEffect(() => {
               <div><strong>직업:</strong> {currentProfile.job}</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-              {[{l:"Finger Score™",v:`${currentProfile.fingerHealthScore}점`},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
+              {[{l:"Finger Score™",v: currentProfile.fingerHealthScore != null ? `${currentProfile.fingerHealthScore}점` : "측정 전"},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
                 <div key={item.l} style={{background:"#f8fafc",borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
                   <div style={{fontSize:9,color:"#64748b"}}>{item.l}</div>
                   <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginTop:2}}>{item.v}</div>

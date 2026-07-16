@@ -37,7 +37,7 @@ const PATIENT_PROFILES_DEFAULT = [
 const BIOMARKER_METRICS = (profile) => [
   { name: "Finger Score™", value: profile.fingerHealthScore, unit: "점", tradeName: "Finger Score™",
     description: "Mobility·Stability·Inflammation·Recovery 4개 하위 점수를 종합한 Finger Health Score입니다.",
-    status: profile.fingerHealthScore > 75 ? "good" : profile.fingerHealthScore > 60 ? "stable" : "warning" },
+    status: profile.fingerHealthScore == null ? null : profile.fingerHealthScore > 75 ? "good" : profile.fingerHealthScore > 60 ? "stable" : "warning" },
   { name: "Finger Age™", value: profile.fingerAge, unit: "세", tradeName: "Finger Age™",
     description: "생체 가동성 데이터를 바탕으로 분석된 회원 님의 손가락 기능 나이입니다.",
     status: profile.fingerAge <= profile.age ? "good" : profile.fingerAge - profile.age < 10 ? "stable" : "danger" },

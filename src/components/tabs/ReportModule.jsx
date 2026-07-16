@@ -34,8 +34,14 @@ function ReportModule({ currentProfile }) {
               <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
-              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
+              {b.value == null ? (
+                <span className="text-[9px] font-bold text-slate-400 px-2 py-1 rounded-full border border-slate-200 bg-slate-50">측정 전</span>
+              ) : (
+                <>
+                  <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
+                </>
+              )}
             </div>
           </JTCard>
         ))}
