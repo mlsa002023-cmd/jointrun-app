@@ -34,6 +34,10 @@ const PATIENT_PROFILES_DEFAULT = [
   }
 ];
 
+// P0 B2C 안전 요건 — 아직 정식 출시되지 않았거나 실제 제품과 연동되지 않은 지표는
+// 코드/데이터를 지우지 않고 이 목록으로만 걸러 숨긴다(P2에서 이름만 빼면 다시 노출 가능).
+const HIDDEN_BIOMARKER_NAMES = new Set(["Finger Age™", "Risk Forecast™"]);
+
 const BIOMARKER_METRICS = (profile) => [
   { name: "Finger Score™", value: profile.fingerHealthScore, unit: "점", tradeName: "Finger Score™",
     description: "Mobility·Stability·Inflammation·Recovery 4개 하위 점수를 종합한 Finger Health Score입니다.",
@@ -42,12 +46,12 @@ const BIOMARKER_METRICS = (profile) => [
     description: "생체 가동성 데이터를 바탕으로 분석된 회원 님의 손가락 기능 나이입니다.",
     status: profile.fingerAge <= profile.age ? "good" : profile.fingerAge - profile.age < 10 ? "stable" : "danger" },
   { name: "Pain Trend™", value: profile.painIndex, unit: "VAS", tradeName: "Pain Trend™",
-    description: "AI 스마트 보조기의 미세 압력 변화와 유저 설문을 통해 기록된 통증 척도입니다.",
+    description: "사용자가 기록한 통증 정도를 기준으로 한 척도입니다.",
     status: profile.painIndex < 4 ? "good" : profile.painIndex < 7 ? "stable" : "warning" },
   { name: "Risk Forecast™", value: profile.riskForecast, unit: "%", tradeName: "Risk Forecast™",
     description: "현재 날씨(습도/기압)와 연속 가혹 동작 감지를 통해 예보하는 24시간 내 통증 위험도입니다.",
     status: profile.riskForecast < 30 ? "good" : profile.riskForecast < 50 ? "stable" : "danger" },
-];
+].filter((b) => !HIDDEN_BIOMARKER_NAMES.has(b.name));
 
 const DEFAULT_STEPS = [
   { id: 1, label: "Score 확인", description: "오늘 내 Finger Score 및 아침 강직도 상태 확인", isCompleted: false },

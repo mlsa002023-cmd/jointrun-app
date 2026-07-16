@@ -33,8 +33,12 @@ import PremiumModule from "./tabs/PremiumModule";
 
 const NAVER_BAND_URL = "https://band.us/@jointrun";
 
+// P0 B2C 안전 요건 — 실제 제품과 연동되지 않은 "스마트 보조기" 기기 카드는 숨긴다(작업6).
+// 코드는 지우지 않고 이 플래그로만 숨김 — P2에서 실제 기기가 연동되면 true로 되돌릴 수 있다.
+const SHOW_ARO_DEVICE_CARD = false;
+
 function JOINTRUNUnified() {
- const { currentUser, logout } = useAuth();
+ const { currentUser, logout, isDemo } = useAuth();
 
 // 실제 로그인 사용자 기반 프로필 생성
 const buildUserProfile = (user, overrides = {}) => ({
@@ -303,6 +307,15 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* 데모 모드 안내 — Firebase 연결이 안 된 상태(env 미설정 등)에서 예시 데이터가 실제
+          계정처럼 보이는 것을 막기 위한 배너(P0 작업6, isDemo는 기존에 있었지만 어디서도
+          쓰이지 않던 값). */}
+      {isDemo && (
+        <div style={{background:"#fffbeb",borderBottom:"1px solid #fde68a",color:"#92400e",padding:"6px 16px",fontSize:10,fontWeight:700,textAlign:"center"}}>
+          데모 모드입니다 — 예시 데이터이며 기록이 저장되지 않습니다.
+        </div>
+      )}
+
       {/* ── 앱 스크롤 콘텐츠 ── */}
       <main style={{flex:1,overflowY:"auto",padding:"12px 14px 80px"}}>
 
@@ -323,19 +336,21 @@ useEffect(() => {
                       <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
                     </div>
                   </div>
-                  <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",display:"inline-block",boxShadow:"0 0 0 3px rgba(59,130,246,0.2)"}} />
-                      <div>
-                        <div style={{fontSize:9,color:"#64748b",fontWeight:700}}>스마트 보조기 정렬</div>
-                        <div style={{fontSize:9,color:"#2563eb",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
+                  {SHOW_ARO_DEVICE_CARD && (
+                    <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",display:"inline-block",boxShadow:"0 0 0 3px rgba(59,130,246,0.2)"}} />
+                        <div>
+                          <div style={{fontSize:9,color:"#64748b",fontWeight:700}}>스마트 보조기 정렬</div>
+                          <div style={{fontSize:9,color:"#2563eb",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
+                        </div>
                       </div>
+                      <button onClick={() => { setShowCalibrator(true); triggerFeedback("보조기 캘리브레이션 시작"); }}
+                        style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#2563eb",padding:"4px 8px",minHeight:44,borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                        <Settings style={{width:12,height:12}} />기기 조율
+                      </button>
                     </div>
-                    <button onClick={() => { setShowCalibrator(true); triggerFeedback("보조기 캘리브레이션 시작"); }}
-                      style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#2563eb",padding:"4px 8px",minHeight:44,borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                      <Settings style={{width:12,height:12}} />기기 조율
-                    </button>
-                  </div>
+                  )}
                   {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지 */}
                   <button onClick={() => setActiveTab("scan")}
                     style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
@@ -439,7 +454,7 @@ useEffect(() => {
               ))}
             </div>
             <div style={{background:"#f8fafc",borderRadius:10,padding:10,fontSize:10,color:"#334155",lineHeight:1.7,marginBottom:14}}>
-              해당 환자는 {currentProfile.job} 업무 시 지속적인 반복성 관절 가해를 겪고 있으며, 기상 시 약 {currentProfile.morningStiffnessMin}분간 아침 강직을 호소합니다. 최근 {habitScore.streak.days}일간 JOINTRUN 스마트 보조기와 온수 가동성 습관 실천 결과, 손가락 굽힘 가동 범위(ROM)가 {currentProfile.weeklyROMChange}의 개선 회복 국면을 확인했습니다.
+              해당 환자는 {currentProfile.job} 업무 시 지속적인 반복성 관절 가해를 겪고 있으며, 기상 시 약 {currentProfile.morningStiffnessMin}분간 아침 강직을 호소합니다. 최근 {habitScore.streak.days}일간 온수 가동성 습관 실천 결과, 손가락 굽힘 가동 범위(ROM)가 {currentProfile.weeklyROMChange}의 개선 회복 국면을 확인했습니다.
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:10,borderTop:"1px solid #e2e8f0"}}>
               <button onClick={() => { triggerFeedback("소견서가 프린터로 발송되었습니다."); setShowDoctorReport(false); }}
