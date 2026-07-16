@@ -4,7 +4,11 @@
 // - Firebase/Anthropic API 등 네트워크 요청은 네트워크 우선(network-first), 실패 시 캐시 폴백
 // - 네비게이션 요청 오프라인 시 캐시된 index.html 로 폴백
 
-const CACHE_VERSION = "jointrun-v1";
+// __CACHE_VERSION__은 `npm run build`가 scripts/stamp-sw-version.js를 통해 배포마다
+// 고유한 값으로 치환한다(dist/service-worker.js에서만). public/ 원본은 그대로 두고,
+// `npm run dev`에서는 서비스 워커 자체를 등록하지 않으므로(registerServiceWorker.js)
+// 이 플레이스홀더가 실제로 브라우저에 로드될 일은 없다.
+const CACHE_VERSION = "__CACHE_VERSION__";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 

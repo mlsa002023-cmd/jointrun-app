@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Activity, Camera, Compass, Printer,
-  Settings, TrendingUp, User, Volume2, Zap
+  Activity, Camera, Compass,
+  TrendingUp, User, Volume2, Zap
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import MotionScanPage from "./MotionScanPage";
@@ -29,13 +29,8 @@ import CoachModule from "./tabs/CoachModule";
 import TimelineModule from "./tabs/TimelineModule";
 import ReportModule from "./tabs/ReportModule";
 import ProfileModule from "./tabs/ProfileModule";
-import PremiumModule from "./tabs/PremiumModule";
 
 const NAVER_BAND_URL = "https://band.us/@jointrun";
-
-// P0 B2C 안전 요건 — 실제 제품과 연동되지 않은 "스마트 보조기" 기기 카드는 숨긴다(작업6).
-// 코드는 지우지 않고 이 플래그로만 숨김 — P2에서 실제 기기가 연동되면 true로 되돌릴 수 있다.
-const SHOW_ARO_DEVICE_CARD = false;
 
 function JOINTRUNUnified() {
  const { currentUser, logout, isDemo } = useAuth();
@@ -164,14 +159,18 @@ useEffect(() => {
     return () => window.removeEventListener("online", flushPendingEvents);
   }, [currentUser?.uid]);
 
+  // session_start(§8) — 로그인된 사용자가 앱을 실행(또는 재로그인)할 때마다 1회 발생.
+  useEffect(() => {
+    if (!currentUser) return;
+    trackKpiEvent("session_start", currentUser.uid);
+  }, [currentUser?.uid]);
+
   const [activeTab, setActiveTab] = useState("home");
   const [showEventMarker, setShowEventMarker] = useState(false);
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [activeSpecSection, setActiveSpecSection] = useState(1);
   const [specSearch, setSpecSearch] = useState("");
-  const [showDoctorReport, setShowDoctorReport] = useState(false);
-  const [showCalibrator, setShowCalibrator] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState({});
   const [profileMode, setProfileMode] = useState("edit");
@@ -255,8 +254,6 @@ useEffect(() => {
     }
   };
 
-  const triggerDoctorReportPrint = () => { triggerFeedback("대학병원 제출용 AI 안심 리포트 PDF가 생성되었습니다."); setShowDoctorReport(true); };
-
   // 작업지시서 항목 3(정보구조 개편): HOME/SCAN/TIMELINE/REPORT/PROFILE 5탭 고정.
   // 기존 AI코치·커뮤니티 탭은 없애지 않고 PROFILE 화면 안의 진입점으로 재배치했다(기능 자체는 유지).
   const TAB_CONFIG = [
@@ -336,21 +333,6 @@ useEffect(() => {
                       <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
                     </div>
                   </div>
-                  {SHOW_ARO_DEVICE_CARD && (
-                    <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",display:"inline-block",boxShadow:"0 0 0 3px rgba(59,130,246,0.2)"}} />
-                        <div>
-                          <div style={{fontSize:9,color:"#64748b",fontWeight:700}}>스마트 보조기 정렬</div>
-                          <div style={{fontSize:9,color:"#2563eb",fontWeight:600,fontFamily:"monospace"}}>기기 정밀 조율 각도: 15°</div>
-                        </div>
-                      </div>
-                      <button onClick={() => { setShowCalibrator(true); triggerFeedback("보조기 캘리브레이션 시작"); }}
-                        style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#2563eb",padding:"4px 8px",minHeight:44,borderRadius:8,fontSize:9,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                        <Settings style={{width:12,height:12}} />기기 조율
-                      </button>
-                    </div>
-                  )}
                   {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지 */}
                   <button onClick={() => setActiveTab("scan")}
                     style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
@@ -369,7 +351,7 @@ useEffect(() => {
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
-              {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerDoctorReportPrint={triggerDoctorReportPrint} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
+              {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
               {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
               {activeTab === "profile" && (
                 <ProfileModule
@@ -428,45 +410,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* DOCTOR REPORT MODAL */}
-      {showDoctorReport && (
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
-          <div style={{background:"white",borderRadius:20,maxWidth:560,width:"100%",padding:28,boxShadow:"0 25px 50px rgba(0,0,0,0.3)",border:"3px solid #3b82f6"}}>
-            <div style={{display:"flex",justifyContent:"space-between",borderBottom:"2px solid #0f172a",paddingBottom:12,marginBottom:16}}>
-              <div>
-                <div style={{fontSize:15,fontWeight:900,letterSpacing:"0.05em"}}>JOINTRUN DIGITAL BIOMARKER PORTFOLIO</div>
-                <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:"monospace"}}>Clinical Diagnostic Referral Sheet</div>
-              </div>
-              <div style={{background:"#0f172a",color:"white",padding:"4px 8px",borderRadius:6,fontSize:10,fontFamily:"monospace",fontWeight:900}}>JR-11-PR</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,fontSize:11,marginBottom:14,paddingBottom:14,borderBottom:"1px solid #e2e8f0"}}>
-              <div><strong>환자명:</strong> {currentProfile.name} ({currentProfile.gender})</div>
-              <div><strong>증상:</strong> {currentProfile.symptoms}</div>
-              <div><strong>나이:</strong> 만 {currentProfile.age}세</div>
-              <div><strong>직업:</strong> {currentProfile.job}</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-              {[{l:"Finger Score™",v: currentProfile.fingerHealthScore != null ? `${currentProfile.fingerHealthScore}점` : "측정 전"},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
-                <div key={item.l} style={{background:"#f8fafc",borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
-                  <div style={{fontSize:9,color:"#64748b"}}>{item.l}</div>
-                  <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginTop:2}}>{item.v}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:"#f8fafc",borderRadius:10,padding:10,fontSize:10,color:"#334155",lineHeight:1.7,marginBottom:14}}>
-              해당 환자는 {currentProfile.job} 업무 시 지속적인 반복성 관절 가해를 겪고 있으며, 기상 시 약 {currentProfile.morningStiffnessMin}분간 아침 강직을 호소합니다. 최근 {habitScore.streak.days}일간 온수 가동성 습관 실천 결과, 손가락 굽힘 가동 범위(ROM)가 {currentProfile.weeklyROMChange}의 개선 회복 국면을 확인했습니다.
-            </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:10,borderTop:"1px solid #e2e8f0"}}>
-              <button onClick={() => { triggerFeedback("소견서가 프린터로 발송되었습니다."); setShowDoctorReport(false); }}
-                style={{background:"#2563eb",color:"white",fontWeight:800,fontSize:11,padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                <Printer style={{width:14,height:14}} />소견서 출력
-              </button>
-              <button onClick={() => setShowDoctorReport(false)} style={{background:"#f1f5f9",color:"#334155",fontWeight:700,fontSize:11,padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer"}}>닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* EVENT MARKER MODAL */}
       {showEventMarker && currentUser && (
         <EventMarkerModal
@@ -474,20 +417,6 @@ useEffect(() => {
           onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}
         />
-      )}
-
-      {/* CALIBRATOR MODAL */}
-      {showCalibrator && (
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
-          <div style={{background:"white",borderRadius:20,maxWidth:380,width:"100%",padding:20,boxShadow:"0 20px 40px rgba(0,0,0,0.25)",position:"relative"}}>
-            <button onClick={() => setShowCalibrator(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,fontWeight:700}}>×</button>
-            <PremiumModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />
-            <button onClick={() => { triggerFeedback("보조기 설정이 저장·동기화되었습니다."); setShowCalibrator(false); }}
-              style={{marginTop:12,width:"100%",background:"#2563eb",color:"white",fontWeight:900,fontSize:11,padding:"10px",borderRadius:12,border:"none",cursor:"pointer"}}>
-              조율 완료 & 기기 동기화
-            </button>
-          </div>
-        </div>
       )}
 
     </div>

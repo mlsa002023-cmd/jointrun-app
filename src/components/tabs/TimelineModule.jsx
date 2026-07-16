@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Printer, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as ChartTooltip, BarChart, Bar, Cell
@@ -13,7 +13,7 @@ import JTSection from "../ui/JTSection";
 import JTSkeleton from "../ui/JTSkeleton";
 import JTEmptyState from "../ui/JTEmptyState";
 
-function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint, onOpenEventMarker }) {
+function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
   const { scans, timelineItems, loading } = useTimelineData();
   const [selectedEvent, setSelectedEvent] = useState(null);
 
@@ -123,9 +123,6 @@ function TimelineModule({ currentProfile, currentUser, triggerDoctorReportPrint,
         <p className="text-[10px] font-bold text-blue-800 mb-2">
           주간 회복 변화: <span className="text-blue-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
         </p>
-        <button onClick={triggerDoctorReportPrint} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 mx-auto">
-          <Printer className="w-3.5 h-3.5" /> 소견서 출력
-        </button>
       </div>
     </div>
   );

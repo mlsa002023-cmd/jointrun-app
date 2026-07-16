@@ -62,7 +62,7 @@ export function summarizeFingers(fingers) {
   return { avgScore, avgFlexion };
 }
 
-// 카피 가이드라인 — 관찰된 사실만 서술한다. 의료 효능 단정·처방·행동 지시 금지.
+// 카피 가이드라인(§5.2) — 관찰된 사실만 서술한다. 의료 효능 단정·원인 진단·처방·행동 지시 금지.
 export function buildRecommendation(score, rom) {
   if (score >= 80) {
     return `손가락 가동 범위 ${rom}°로, 최근 측정 중 양호한 범위에 속합니다.`;
