@@ -324,7 +324,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       console.error("[MotionScanPage] HandTracker 초기화 실패:", err);
       setErrorMessage(`AI 모델(WASM) 초기화에 실패했습니다. (${err?.message || "알 수 없는 오류"})`);
       setPhase("ai_error");
-      triggerFeedback("AI 모델 초기화 실패 — 시뮬레이션 모드로 전환합니다.");
+      triggerFeedback(import.meta.env.DEV ? "AI 모델 초기화 실패 — 시뮬레이션 모드로 전환합니다." : "지금은 측정할 수 없습니다.");
       return;
     }
     setPhase("scanning");
@@ -335,7 +335,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const handleCameraError = useCallback((err) => {
     setErrorMessage(`카메라에 접근할 수 없습니다. (${err?.message || "권한 거부"})`);
     setPhase("camera_error");
-    triggerFeedback("카메라 접근 불가 — 시뮬레이션 모드로 전환합니다.");
+    triggerFeedback(import.meta.env.DEV ? "카메라 접근 불가 — 시뮬레이션 모드로 전환합니다." : "카메라에 접근할 수 없습니다.");
   }, [triggerFeedback]);
 
   const startScan = () => {
@@ -428,6 +428,9 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   }, [finishScan]);
 
   const runSimulation = () => {
+    // P0 안전 요건 — 시뮬레이션 스캔·결과 생성은 개발 환경에서만 동작한다. 버튼 자체를
+    // prod에서 숨기지만(아래 JSX), 다른 경로로 호출되는 것까지 막기 위해 함수에서도 가드한다.
+    if (!import.meta.env.DEV) return;
     const simFingers = [
       { key: "index", name: "검지", flexion: 118, deviation: 4.2, deviationDir: "ulnar", score: 82 },
       { key: "middle", name: "중지", flexion: 125, deviation: 3.1, deviationDir: "radial", score: 88 },
@@ -453,6 +456,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       scanScores: { mobility, stability, stiffnessComponent },
       raw: null,
       recommendation: buildRecommendation(mobility.value, 122),
+      isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
     });
   };
 
@@ -605,9 +609,11 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
             <button onClick={startScan} className="bg-blue-500 hover:bg-blue-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
               MediaPipe 스캔 시작
             </button>
-            <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
-              시뮬레이션으로 건너뛰기
-            </button>
+            {import.meta.env.DEV && (
+              <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
+                시뮬레이션으로 건너뛰기
+              </button>
+            )}
           </div>
         )}
 
@@ -619,15 +625,21 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 {phase === "camera_error" ? "카메라 오류" : "AI 모델 오류"}
               </p>
               <p className="text-[10px] text-amber-600 mt-1">
-                {errorMessage || "문제가 발생하여 시뮬레이션 데이터로 시연합니다."}
+                {/* 운영환경에서는 기술적 에러 메시지 대신 안내 문구만 보여주고, 시뮬레이션으로
+                    빠지지 않는다(P0 안전 요건 — 기록 생성 없이 안내 후 종료). */}
+                {import.meta.env.DEV
+                  ? (errorMessage || "문제가 발생하여 시뮬레이션 데이터로 시연합니다.")
+                  : "지금은 측정할 수 없습니다. 잠시 후 다시 시도해주세요."}
               </p>
               <div className="flex gap-2 justify-center mt-3">
                 <button onClick={restart} className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">
                   다시 시도
                 </button>
-                <button onClick={runSimulation} className="bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
-                  시뮬레이션 스캔 실행
-                </button>
+                {import.meta.env.DEV && (
+                  <button onClick={runSimulation} className="bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
+                    시뮬레이션 스캔 실행
+                  </button>
+                )}
               </div>
             </div>
           </div>

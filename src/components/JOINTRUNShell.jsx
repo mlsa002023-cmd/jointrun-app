@@ -178,7 +178,7 @@ useEffect(() => {
   }, []);
 
   const handleScanCompleted = (payload) => {
-    const { metrics, scanScores, raw, recommendation } = payload;
+    const { metrics, scanScores, raw, recommendation, isSimulated } = payload;
     // Mobility/Stability는 이번 스캔의 실측값, Inflammation/Recovery는 가장 최근 컨디션 체크인 값과 결합한다.
     setLastScanScores(scanScores);
     const inflammation = computeInflammationScore(condition.swellingLevel);
@@ -191,13 +191,16 @@ useEffect(() => {
     const updated = { ...currentProfile, fingerHealthScore: healthScore.total, painIndex: metrics.painIndex, morningStiffnessMin: metrics.stiffnessMin };
     setUserProfile(updated);
     // return_scan(§8) — 이전 스캔이 이미 있던 상태에서(재방문) 새 스캔을 완료한 경우에만 발생.
-    if (currentUser && scanCount >= 1) {
+    // 시뮬레이션(dev 전용) 결과는 실제 방문 지표에 섞이면 안 되므로 집계하지 않는다.
+    if (currentUser && scanCount >= 1 && !isSimulated) {
       trackKpiEvent("return_scan", currentUser.uid);
     }
     // 홈 화면 상태(Empty/First Scan/Normal) 판정이 리페치 없이 즉시 갱신되도록 낙관적으로 반영.
+    // (로컬 상태 미리보기이므로 시뮬레이션이어도 그대로 반영 — dev에서 UI 흐름 확인용.)
     addOptimisticScan(healthScore);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
-    if (currentUser) {
+    // 시뮬레이션 결과는 어떤 경우에도 Firebase에 저장하지 않는다(P0 안전 요건 — 실제 기록과 섞임 방지).
+    if (currentUser && !isSimulated) {
       saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
       saveProfileSnapshot(currentUser.uid, {
         fingerHealthScore: updated.fingerHealthScore,
@@ -205,7 +208,7 @@ useEffect(() => {
         morningStiffnessMin: updated.morningStiffnessMin,
       }).catch(err => console.error("프로필 스냅샷 저장 실패:", err));
     }
-    recordActivity(currentUser?.uid);
+    if (!isSimulated) recordActivity(currentUser?.uid);
   };
 
   const handleCheckIn = (checkinData) => {
