@@ -35,7 +35,7 @@ export function getTodayAction({ name, swellingLevel, consistencyScore, mobility
 
   if (mobilityTrendUp) {
     return {
-      message: `${displayName} 님, 최근 관절가동범위(Mobility)가 상승 추세예요! 지금 루틴을 그대로 이어가 보세요.`,
+      message: `${displayName} 님, 최근 관절가동범위(Mobility)가 상승 추세예요! 최근 기록을 확인해보세요.`,
       rule: "mobility_trend_up",
       reason: "직전 스캔 대비 Mobility 상승",
     };

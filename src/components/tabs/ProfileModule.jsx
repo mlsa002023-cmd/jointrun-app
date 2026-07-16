@@ -17,7 +17,7 @@ function ProfileModule({ currentProfile, onEditConcernArea, onOpenCoach, communi
         <JTListItem as="button" onClick={onEditConcernArea} showChevron
           label="걱정 부위 다시 설정" sublabel={`현재: ${currentProfile.concernArea || "미설정"}`} />
         <JTListItem as="button" onClick={onOpenCoach} icon={MessageSquare} showChevron
-          label="AI 코치와 대화하기" />
+          label="기록 도우미와 대화하기" />
         <JTListItem as="button" onClick={() => window.open(communityUrl, "_blank", "noopener,noreferrer")} icon={ExternalLink} showChevron
           label="커뮤니티 (네이버 밴드)" />
       </JTCard>

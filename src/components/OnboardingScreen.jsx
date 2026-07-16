@@ -25,7 +25,7 @@ export default function OnboardingScreen({ currentProfile, initialValue, onCompl
           <div style={{ background: "#0f172a", color: "white", width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14, boxShadow: "0 8px 20px rgba(15,23,42,0.25)" }}>
             <Sparkles style={{ width: 26, height: 26, color: "#93c5fd" }} />
           </div>
-          <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>첫 만남 진단</div>
+          <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>관심 부위 확인</div>
           <div style={{ fontSize: 17, fontWeight: 900, color: "#0f172a", textAlign: "center" }}>
             {currentProfile?.name || "회원"} 님, 가장 걱정되는 부위는?
           </div>

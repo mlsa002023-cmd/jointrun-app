@@ -11,14 +11,14 @@ function CoachModule({ currentProfile, triggerFeedback }) {
   useEffect(() => {
     setMessages([{
       id: "welcome", sender: "coach",
-      text: `안녕하세요, ${currentProfile.name} 님! JOINTRUN AI 코치입니다. 오늘 손가락·손목 상태는 어떠신가요? 아침 강직도나 통증 등 편히 말씀해 주세요.`,
+      text: `안녕하세요, ${currentProfile.name} 님! JOINTRUN 기록 도우미입니다. 오늘 손가락·손목 상태를 편히 기록해보세요.`,
       ts: "방금 전"
     }]);
   }, [currentProfile.id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
-  const QUICK_CHIPS = ["오늘 손이 많이 아파요", "아침 강직이 심해요", "보조기 사용법 알려줘", "온수 요법 방법은?"];
+  const QUICK_CHIPS = ["오늘 손이 많이 아파요", "아침 강직이 심해요", "오늘 상태를 기록하고 싶어요", "최근 기록을 요약해줘"];
 
   const send = async (text) => {
     const txt = text || input.trim();
@@ -32,10 +32,10 @@ function CoachModule({ currentProfile, triggerFeedback }) {
       const reply = await callAnthropicCoach(nextMsgs, currentProfile);
       setTyping(false);
       setMessages(prev => [...prev, { id: `c-${Date.now()}`, sender: "coach", text: reply, ts: "방금 전" }]);
-      triggerFeedback("AI 코치 소견이 도착했습니다.");
+      triggerFeedback("기록 도우미 답변이 도착했습니다.");
     } catch {
       setTyping(false);
-      const fallback = `${currentProfile.name} 님, ${currentProfile.job}으로 인해 손가락 건초 긴장이 누적되었을 수 있습니다. 억지로 꺾지 마시고 3분간 따뜻한 온수 잼잼 요법으로 관절 윤활액 분비를 촉진해 주세요.`;
+      const fallback = "지금은 답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.";
       setMessages(prev => [...prev, { id: `cf-${Date.now()}`, sender: "coach", text: fallback, ts: "방금 전" }]);
     }
   };
@@ -43,8 +43,8 @@ function CoachModule({ currentProfile, triggerFeedback }) {
   return (
     <div className="flex flex-col h-full space-y-3">
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase tracking-widest font-mono">Anthropic AI Coach</p>
-        <h2 className="text-sm font-bold text-slate-900">AI 관절 건강 코치</h2>
+        <p className="text-[9px] text-slate-400 uppercase tracking-widest font-mono">Record Assistant</p>
+        <h2 className="text-sm font-bold text-slate-900">기록 도우미</h2>
       </div>
       <div className="flex-1 overflow-y-auto space-y-2.5 max-h-80 px-1">
         {messages.map(m => (

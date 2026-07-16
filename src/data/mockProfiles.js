@@ -55,10 +55,10 @@ const BIOMARKER_METRICS = (profile) => [
 const DEFAULT_STEPS = [
   { id: 1, label: "Score 확인", description: "오늘 내 Finger Score 및 아침 강직도 상태 확인", isCompleted: false },
   { id: 2, label: "정밀 스캔", description: "20초 AI 카메라 손동작 스캔 가동 범위 측정", isCompleted: false },
-  { id: 3, label: "AI 소견 분석", description: "어제 대비 개선 정도 및 AI 한 줄 맞춤 진단", isCompleted: false },
-  { id: 4, label: "3분 온수 운동", description: "관절 윤활 및 유연 회복을 위한 잼잼 요법", isCompleted: false },
+  { id: 3, label: "기록 도우미 확인", description: "어제 대비 변화를 기록 도우미와 함께 확인", isCompleted: false },
+  { id: 4, label: "3분 손 움직임", description: "가볍게 손을 움직여보는 시간", isCompleted: false },
   { id: 5, label: "회복 일기 공유", description: "소중한 일상과 응원을 커뮤니티에 나누기", isCompleted: false },
-  { id: 6, label: "기록 최종 완료", description: "오늘 회복 스트릭 채우고 관절 회복력 축적", isCompleted: false },
+  { id: 6, label: "기록 최종 완료", description: "오늘 상태를 기록으로 남기기", isCompleted: false },
 ];
 
 const BLUEPRINT_SECTIONS = [

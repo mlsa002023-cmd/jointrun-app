@@ -64,7 +64,7 @@ export default function AuthScreen() {
         <img src="/logo-horizontal-color.png" alt="JOINTRUN" style={{ height: 40, width: "auto", marginBottom: 12 }} />
 
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-          {mode === "login" ? "다시 만나서 반갑습니다" : "5년을 막는 일, 지금 시작하세요"}
+          {mode === "login" ? "다시 만나서 반갑습니다" : "오늘의 손을 기록하고, 앞으로의 변화를 확인하세요."}
         </div>
       </div>
 
