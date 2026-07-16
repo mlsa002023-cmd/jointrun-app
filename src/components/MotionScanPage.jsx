@@ -603,7 +603,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
             <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
               <Camera className="w-8 h-8 text-blue-400" />
             </div>
-            <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />어떠한 민감 정보도 외부로 전송되지 않습니다.</p>
+            <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />원본 카메라 영상은 저장하지 않으며, 측정 결과만 사용자 계정에 저장됩니다.</p>
             <button onClick={startScan} className="bg-blue-500 hover:bg-blue-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
               MediaPipe 스캔 시작
             </button>
