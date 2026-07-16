@@ -65,11 +65,12 @@ const [userProfile, setUserProfile] = useState(
 
 const currentProfile = userProfile;
 
-// 가장 최근 스캔의 객관적 하위 점수(Mobility/Stability/강직 성분) — 다음 컨디션 체크인 때 그대로 재사용된다.
+// 가장 최근 스캔의 객관적 하위 점수(Mobility/Stability) — 다음 컨디션 체크인 때 그대로 재사용된다.
 // 스캔 전에는 50점 중립값이 아니라 null(측정 전)로 둔다(P0 안전 요건).
+// stiffnessComponent는 v2.0부터 Recovery 계산에 쓰이지 않아 더 이상 들고 있지 않는다(작업4).
 const UNMEASURED_SUBSCORE = { value: null, reason: "스캔 전" };
 const [lastScanScores, setLastScanScores] = useState({
-  mobility: UNMEASURED_SUBSCORE, stability: UNMEASURED_SUBSCORE, stiffnessComponent: null,
+  mobility: UNMEASURED_SUBSCORE, stability: UNMEASURED_SUBSCORE,
 });
 // 가장 최근 컨디션 체크인(붓기/피로도) — 아직 체크인하지 않았으면 null(중립 처리).
 const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: null });
@@ -137,7 +138,6 @@ useEffect(() => {
   setLastScanScores({
     mobility: sc.mobility ?? UNMEASURED_SUBSCORE,
     stability: sc.stability ?? UNMEASURED_SUBSCORE,
-    stiffnessComponent: sc.recovery?.stiffnessComponent ?? null,
   });
 }, [recentScans]);
 
@@ -184,7 +184,7 @@ useEffect(() => {
     setLastScanScores(scanScores);
     const inflammation = computeInflammationScore(condition.swellingLevel);
     const fatigueComponent = computeFatigueComponent(condition.fatigueLevel);
-    const recovery = computeRecoveryScore(scanScores.stiffnessComponent, fatigueComponent);
+    const recovery = computeRecoveryScore(fatigueComponent);
     const healthScore = computeFingerHealthScore({
       mobility: scanScores.mobility, stability: scanScores.stability, inflammation, recovery,
     });
@@ -223,7 +223,7 @@ useEffect(() => {
     setCondition({ swellingLevel, fatigueLevel });
     const inflammation = computeInflammationScore(swellingLevel);
     const fatigueComponent = computeFatigueComponent(fatigueLevel);
-    const recovery = computeRecoveryScore(lastScanScores.stiffnessComponent, fatigueComponent);
+    const recovery = computeRecoveryScore(fatigueComponent);
     const healthScore = computeFingerHealthScore({
       mobility: lastScanScores.mobility, stability: lastScanScores.stability, inflammation, recovery,
     });
@@ -431,7 +431,7 @@ useEffect(() => {
               <div><strong>직업:</strong> {currentProfile.job}</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-              {[{l:"Finger Score™",v: currentProfile.fingerHealthScore != null ? `${currentProfile.fingerHealthScore}점` : "측정 전"},{l:"아침 강직",v:`${currentProfile.morningStiffnessMin}분`},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
+              {[{l:"Finger Score™",v: currentProfile.fingerHealthScore != null ? `${currentProfile.fingerHealthScore}점` : "측정 전"},{l:"관절 기능 나이",v:`${currentProfile.fingerAge}세`},{l:"통증 VAS",v:`${currentProfile.painIndex}/10`}].map(item=>(
                 <div key={item.l} style={{background:"#f8fafc",borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
                   <div style={{fontSize:9,color:"#64748b"}}>{item.l}</div>
                   <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginTop:2}}>{item.v}</div>

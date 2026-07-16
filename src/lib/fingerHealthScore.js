@@ -5,11 +5,14 @@
 // Habit Score(습관/스트릭)는 별도 체계 — habitScore.js 참고.
 // ─────────────────────────────────────────────
 
-export const SCORE_VERSION = "v1.0";
+// v1.0: Recovery = 강직 성분(스캔 실측, 60%) + 피로도(자가 체크, 40%) 가중평균.
+// v2.0: Recovery = 피로도(자가 체크) 단독. 확정된 Finger Health Score 하위지표 5개는
+//       Mobility/Stability/Inflammation/Recovery/Habit이고 Stiffness는 그 안에 없어
+//       계산식에서 제거했다(P0 작업4). v1.0 시점에 저장된 문서의 stiffnessComponent
+//       필드는 읽기 전용 legacy로만 남고, 이 버전부터는 신규 계산에 쓰지 않는다.
+export const SCORE_VERSION = "v2.0";
 
 const WEIGHTS = { mobility: 0.35, stability: 0.15, inflammation: 0.25, recovery: 0.25 };
-// Recovery 내부 가중치 — 강직(스캔 실측)이 피로도(자가 체크)보다 객관적이라 비중을 더 둔다.
-const RECOVERY_WEIGHTS = { stiffness: 0.6, fatigue: 0.4 };
 
 // 하위 점수가 없으면 50점 중립값을 넣지 않고 null로 유지한다 — "아직 모름"과 "낮은 점수"를
 // 서로 다른 것으로 구분하기 위함(P0 안전 요건). UI는 null을 "측정 전"으로 표시한다.
@@ -50,8 +53,9 @@ export function computeInflammationScore(swellingLevel) {
 }
 
 /**
- * 강직(Stiffness) 성분 — spread(최대 신전 시도) 자세에서 남은 굴곡각으로 추정한다.
- * Recovery 하위 점수의 절반을 이룬다. 스캔 시점에만 계산 가능해 별도 함수로 분리.
+ * @deprecated v2.0부터 Recovery 계산에 쓰이지 않는다(P0 작업4 — Stiffness는 확정 5대
+ * 하위지표에 없음). v1.0 시기에 저장된 문서를 다루는 legacy 코드에서만 참조하고,
+ * 신규 계산 경로에서는 호출하지 않는다.
  */
 export function computeStiffnessComponent(spread) {
   if (!spread || !spread.length) return null;
@@ -59,7 +63,7 @@ export function computeStiffnessComponent(spread) {
   return Math.round(Math.min(100, Math.max(0, 100 - (avgResidualFlexion / 30) * 100)));
 }
 
-/** 피로도 자가 체크(0=없음~10=심함) 성분 — 체크인이 없으면 null(블렌딩 시 강직만 반영). */
+/** 피로도 자가 체크(0=없음~10=심함) 성분 — 체크인이 없으면 null. */
 export function computeFatigueComponent(fatigueLevel) {
   if (fatigueLevel == null) return null;
   const lvl = Math.min(10, Math.max(0, fatigueLevel));
@@ -67,27 +71,14 @@ export function computeFatigueComponent(fatigueLevel) {
 }
 
 /**
- * Recovery(회복도) = 강직 성분(60%) + 피로도 성분(40%) 가중평균.
- * 둘 중 하나만 있으면 있는 것만 반영, 둘 다 없으면 중립값(50).
- * 반환값의 stiffnessComponent는 다음 컨디션 체크인 때 재결합할 수 있도록 그대로 보존한다.
+ * Recovery(회복도) — v2.0부터 자가보고 피로도(체크인) 단독 기준이다(SCORE_VERSION 주석 참고).
+ * 체크인이 없으면 null(측정 전).
  */
-export function computeRecoveryScore(stiffnessComponent, fatigueComponent) {
-  const w = RECOVERY_WEIGHTS;
-  if (stiffnessComponent == null && fatigueComponent == null) {
-    return { value: null, reason: "스캔·체크인 데이터 없음", stiffnessComponent: null };
-  }
+export function computeRecoveryScore(fatigueComponent) {
   if (fatigueComponent == null) {
-    return { value: stiffnessComponent, reason: `강직 회복도 ${stiffnessComponent}점만 반영 (피로도 체크인 없음)`, stiffnessComponent };
+    return { value: null, reason: "체크인 데이터 없음" };
   }
-  if (stiffnessComponent == null) {
-    return { value: fatigueComponent, reason: `피로도 ${fatigueComponent}점만 반영 (스캔 데이터 없음)`, stiffnessComponent: null };
-  }
-  const value = Math.round(stiffnessComponent * w.stiffness + fatigueComponent * w.fatigue);
-  return {
-    value,
-    reason: `강직 회복도 ${stiffnessComponent}점(${w.stiffness * 100}%) + 피로도 ${fatigueComponent}점(${w.fatigue * 100}%) 가중평균`,
-    stiffnessComponent,
-  };
+  return { value: fatigueComponent, reason: `자가 체크 피로도 ${fatigueComponent}점 반영` };
 }
 
 /**

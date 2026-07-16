@@ -17,7 +17,7 @@ import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
-import { computeMobilityScore, computeStabilityScore, computeStiffnessComponent } from "../lib/fingerHealthScore";
+import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -382,9 +382,9 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
 
       // Finger Health Score의 객관적(스캔) 성분만 여기서 계산한다.
       // Inflammation/Recovery의 피로도 성분은 컨디션 체크인 값이 있어야 하므로 상위(JOINTRUNShell)에서 결합한다.
+      // Recovery는 v2.0부터 피로도(체크인) 단독이라 stiffnessComponent는 더 이상 계산하지 않는다(작업4).
       const mobility = computeMobilityScore(perFinger);
       const stability = computeStabilityScore(spread, ok, fist);
-      const stiffnessComponent = computeStiffnessComponent(spread);
 
       // 화면 표시용(scanResult)은 기존 flat 구조 그대로 유지 — 완료 화면 JSX는 변경하지 않는다.
       const result = {
@@ -411,7 +411,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       // 부모(JOINTRUNShell)에는 raw/metrics/scanScores로 분리된 신규 스키마를 전달한다.
       onScanCompleted({
         metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
-        scanScores: { mobility, stability, stiffnessComponent },
+        scanScores: { mobility, stability },
         raw: rawFrames,
         recommendation: buildRecommendation(mobility.value, avgRom),
       });
@@ -446,14 +446,12 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     triggerFeedback("시뮬레이션 스캔 완료!");
     setPhase("completed");
 
-    // 시뮬레이션은 실제 spread 원본 자세 데이터가 없어 강직 성분은 고정값으로 대체한다.
     const mobility = computeMobilityScore(simFingers.map((f) => ({ rom: f.flexion })));
     const stability = computeStabilityScore(simFingers);
-    const stiffnessComponent = 75;
 
     onScanCompleted({
       metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
-      scanScores: { mobility, stability, stiffnessComponent },
+      scanScores: { mobility, stability },
       raw: null,
       recommendation: buildRecommendation(mobility.value, 122),
       isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시

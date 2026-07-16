@@ -14,8 +14,12 @@ describe("fingerHealthScore — null(측정 전), 50점 중립값 금지", () =>
     expect(computeInflammationScore(null).value).toBeNull();
   });
 
-  it("스캔·체크인이 둘 다 없으면 Recovery는 null", () => {
-    expect(computeRecoveryScore(null, null).value).toBeNull();
+  it("체크인이 없으면 Recovery는 null (v2.0부터 피로도 단독, stiffness 미반영)", () => {
+    expect(computeRecoveryScore(null).value).toBeNull();
+  });
+
+  it("체크인이 있으면 Recovery는 피로도 값을 그대로 반영한다", () => {
+    expect(computeRecoveryScore(70).value).toBe(70);
   });
 
   it("스캔 데이터가 없으면 Mobility/Stability는 null", () => {
