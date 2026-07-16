@@ -333,19 +333,21 @@ useEffect(() => {
                       <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
                     </div>
                   </div>
-                  {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지 */}
-                  <button onClick={() => setActiveTab("scan")}
-                    style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
-                    <Camera style={{width:14,height:14}} />30초 스캔 시작하기
-                  </button>
                   {scanCount === 1 ? (
-                    <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                    <>
+                      {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
+                      <button onClick={() => setActiveTab("scan")}
+                        style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                        <Camera style={{width:14,height:14}} />30초 스캔 시작하기
+                      </button>
+                      <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                      <div style={{marginTop:12}}>
+                        <RecentTimelinePreview setActiveTab={setActiveTab} />
+                      </div>
+                    </>
                   ) : (
                     <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
-                  <div style={{marginTop:12}}>
-                    <RecentTimelinePreview setActiveTab={setActiveTab} />
-                  </div>
                 </div>
                 )
               )}
