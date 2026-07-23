@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
 import { FEATURE_FLAGS } from "../../config/featureFlags";
+import FourWeekReport from "../v9/FourWeekReport";
 import PatternInsightCard from "../PatternInsightCard";
 import JTCard from "../ui/JTCard";
 import { useReportData } from "../../hooks/useReportData";
@@ -20,9 +22,22 @@ function ReportModule({ currentProfile }) {
   const biomarkers = BIOMARKER_METRICS(currentProfile);
   const statusColors = { good:"bg-blue-50 border-blue-200 text-blue-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
+  const [showReport, setShowReport] = useState(false);
 
   return (
     <div className="space-y-4">
+      <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
+        <p className="text-[9px] text-slate-400 uppercase font-mono">Decision Loop</p>
+        <h2 className="text-sm font-bold text-slate-900">4주 리포트</h2>
+      </div>
+      <button
+        onClick={() => setShowReport(true)}
+        className="w-full min-h-11 rounded-xl text-sm font-bold bg-[#122A5C] text-white"
+      >
+        4주 리포트 보기
+      </button>
+      {showReport && <FourWeekReport onClose={() => setShowReport(false)} />}
+
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
         <p className="text-[9px] text-slate-400 uppercase font-mono">Digital Biomarkers</p>
         <h2 className="text-sm font-bold text-slate-900">내 손의 디지털 바이오마커</h2>

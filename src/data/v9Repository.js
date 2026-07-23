@@ -6,7 +6,8 @@
 import {
   createV9Event, updateV9EventStatus, saveCapture, markBaselineCreated,
   completeRecheck, skipRecheck, saveComparison, getCapture,
-  getActiveV9Event, getV9EventHistory, __debugForceRecheckDue,
+  getActiveV9Event, getV9EventHistory, getV9EventHistoryDetailed, getEventDetail,
+  saveDecision, saveOutcome, __debugForceRecheckDue,
 } from "../lib/firestoreV9";
 
 export function createV9Repository(uid) {
@@ -59,6 +60,26 @@ export function createV9Repository(uid) {
     async getHistory(count = 20) {
       if (!uid) return [];
       return getV9EventHistory(uid, count);
+    },
+
+    async getHistoryDetailed(count = 5) {
+      if (!uid) return [];
+      return getV9EventHistoryDetailed(uid, count);
+    },
+
+    async getEventDetail(eventId) {
+      if (!uid) return null;
+      return getEventDetail(uid, eventId);
+    },
+
+    async saveDecision(eventId, decisionData) {
+      if (!uid) return null;
+      return saveDecision(uid, eventId, decisionData);
+    },
+
+    async saveOutcome(eventId, outcomeData) {
+      if (!uid) return null;
+      return saveOutcome(uid, eventId, outcomeData);
     },
 
     // 개발/Mock Capture E2E 검증 전용 — RC0 검증 스프린트 참고.

@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────
 // DecisionLoopFlow
-// 04_APP_PRD_V9.md 핵심 흐름의 오케스트레이터. 두 모드를 지원한다:
+// 04_APP_PRD_V9.md 핵심 흐름의 오케스트레이터. 세 모드를 지원한다:
 //   mode="baseline" — 트리거 선택부터 첫 기준선 저장까지 (S02~S06)
 //   mode="recheck"  — 이미 있는 Event의 2주/4주 재확인 1건을 완료 (S03~S06, S09)
-// 각 화면(S02~S09)은 이 파일이 조립하는 개별 컴포넌트로 분리되어 있다 — 여기는 상태 전이와
+//   mode="decision" — 비교 이후 Decision Log + Outcome 기록 (S12~S13)
+// 각 화면(S02~S13)은 이 파일이 조립하는 개별 컴포넌트로 분리되어 있다 — 여기는 상태 전이와
 // Repository 호출·분석 이벤트 발생만 담당한다(UI 계층에 비즈니스 로직을 두지 않는다는 원칙).
 // ─────────────────────────────────────────────
 import { useState } from "react";
@@ -17,13 +18,17 @@ import GuidedCaptureScreen from "./GuidedCaptureScreen";
 import SymptomSnapshotForm from "./SymptomSnapshotForm";
 import BaselineSavedScreen from "./BaselineSavedScreen";
 import ComparisonScreen from "./ComparisonScreen";
+import DecisionLogScreen from "./DecisionLogScreen";
+import OutcomeScreen from "./OutcomeScreen";
 
 export default function DecisionLoopFlow({ mode, event, recheck, onClose, onCompleted }) {
   const { currentUser } = useAuth();
   const repository = useV9Repository();
   const uid = currentUser?.uid;
 
-  const [step, setStep] = useState(mode === "baseline" ? "trigger" : "prep");
+  const [step, setStep] = useState(
+    mode === "baseline" ? "trigger" : mode === "decision" ? "decision" : "prep"
+  );
   const [eventId, setEventId] = useState(event?.id ?? null);
   const [handSide, setHandSide] = useState(null);
   const [quality, setQuality] = useState(null);
@@ -31,6 +36,7 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   const [recheckDueDates, setRecheckDueDates] = useState(null);
   const [baselineCapture, setBaselineCapture] = useState(null);
   const [currentCapture, setCurrentCapture] = useState(null);
+  const [decisionDraft, setDecisionDraft] = useState(null);
 
   const track = (name, params) => trackKpiEvent(name, uid, params);
 
@@ -48,7 +54,9 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   };
 
   const handleCaptured = ({ qualityStatus, qualityFlags }) => {
-    if (qualityStatus !== "pass") {
+    if (qualityStatus === "pass") {
+      track(V9_ANALYTICS_EVENTS.CAPTURE_QUALITY_PASSED, { eventId });
+    } else {
       track(V9_ANALYTICS_EVENTS.CAPTURE_QUALITY_FAILED, { eventId, reason: qualityFlags?.[0] ?? "unknown" });
     }
     setQuality({ qualityStatus, qualityFlags });
@@ -56,7 +64,7 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   };
 
   const handleSymptomSubmit = async (symptomSnapshot) => {
-    track(V9_ANALYTICS_EVENTS.SYMPTOM_SAVED, { eventId, fieldsCompleted: Object.keys(symptomSnapshot).length });
+    track(V9_ANALYTICS_EVENTS.SYMPTOM_SNAPSHOT_SAVED, { eventId, fieldsCompleted: Object.keys(symptomSnapshot).length });
 
     const newCaptureId = await repository.saveCapture(eventId, {
       type: mode === "baseline" ? CAPTURE_TYPE.BASELINE : CAPTURE_TYPE.RECHECK,
@@ -106,22 +114,40 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
     setStep("saved");
   };
 
+  // ── mode="decision": 비교 이후 Decision Log → Outcome ──
+  const handleDecisionSubmit = async (decisionData) => {
+    await repository.saveDecision(eventId, decisionData);
+    track(V9_ANALYTICS_EVENTS.DECISION_LOGGED, { eventId, decisionType: decisionData.decisionType });
+    setDecisionDraft(decisionData);
+    setStep("outcome");
+  };
+
+  const handleOutcomeSubmit = async (outcomeData) => {
+    await repository.saveOutcome(eventId, outcomeData);
+    track(V9_ANALYTICS_EVENTS.OUTCOME_LOGGED, { eventId, perceivedChange: outcomeData.perceivedChange });
+    // North Star — baseline_created→recheck_completed→comparison_viewed→decision_logged→outcome_logged
+    // 체인이 전부 끝난 시점(이 모드에 진입할 수 있다는 것 자체가 앞 단계가 끝났다는 뜻)에만 기록한다.
+    track(V9_ANALYTICS_EVENTS.DECISION_LOOP_COMPLETED, { eventId });
+    setStep("saved");
+  };
+
   const handleDone = () => {
     onCompleted?.();
     onClose();
   };
 
   // GuidedCaptureScreen은 이미 자체적으로 position:fixed 풀스크린이라 그대로 반환한다.
-  // 나머지 화면(OnboardingScreen과 같은 패턴)은 minHeight:100vh만 쓰므로, 여기서 fixed 오버레이로
-  // 감싸지 않으면 홈 화면 콘텐츠 아래에 이어 붙는 형태로 렌더링된다(뒤에 있던 실제 버그 — 스크롤을
-  // 해야 보이고 하단 탭바가 화면 위에 겹쳐 보였다). 모든 하위 화면을 이 fixed 컨테이너로 감싼다.
+  // 나머지 화면은 minHeight:100vh만 쓰므로, 여기서 fixed 오버레이로 감싸지 않으면 홈 화면
+  // 콘텐츠 아래에 이어 붙는 형태로 렌더링된다(RC0에서 실제로 겪은 버그) — 전부 이 컨테이너로 감싼다.
   if (step === "capture") return <GuidedCaptureScreen handSide={handSide} onCaptured={handleCaptured} onCancel={onClose} />;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 300, overflowY: "auto", background: "#f8fafc" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, overflowY: "auto", background: "#F4F6FA" }}>
       {step === "trigger" && <TriggerSelectScreen onSubmit={handleTriggerSubmit} onCancel={onClose} />}
       {step === "prep" && <CapturePrepScreen onSubmit={handlePrepSubmit} onCancel={onClose} />}
       {step === "symptom" && <SymptomSnapshotForm onSubmit={handleSymptomSubmit} onCancel={onClose} />}
+      {step === "decision" && <DecisionLogScreen onSubmit={handleDecisionSubmit} onCancel={onClose} />}
+      {step === "outcome" && <OutcomeScreen decisionLabel={decisionDraft?.decisionLabel} onSubmit={handleOutcomeSubmit} onCancel={onClose} />}
       {step === "comparison" && (
         <ComparisonScreen
           baselineCapture={baselineCapture}

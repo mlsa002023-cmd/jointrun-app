@@ -328,22 +328,28 @@ useEffect(() => {
               {activeTab === "home" && (
                 <>
                 {agenda && (
-                  <div style={{background:"white",border:"1px solid #bfdbfe",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+                  <div style={{background:"white",border:"1px solid #B9C7E1",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
                       <div>
-                        <div style={{fontSize:10,color:"#1d4ed8",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
+                        <div style={{fontSize:10,color:"#122A5C",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
                         <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{agenda.label}</div>
                       </div>
                       {agenda.key === "no_baseline" && (
                         <button onClick={() => setDecisionLoop({ mode: "baseline" })}
-                          style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
                           첫 기준선 만들기
                         </button>
                       )}
                       {agenda.key === "recheck_ready" && (
                         <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
-                          style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
                           지금 재확인하기
+                        </button>
+                      )}
+                      {agenda.key === "awaiting_decision" && (
+                        <button onClick={() => setDecisionLoop({ mode: "decision" })}
+                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                          결과 기록하기
                         </button>
                       )}
                     </div>
@@ -443,7 +449,7 @@ useEffect(() => {
             }}
             style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#2563eb":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
             {tab.fab ? (
-              <div style={{width:38,height:38,background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(37,99,235,0.25)"}}>
+              <div style={{width:38,height:38,background:"#EEF1F8",border:"1.5px solid #B9C7E1",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(37,99,235,0.25)"}}>
                 <tab.icon style={{width:20,height:20,color:"#2563eb"}} />
               </div>
             ) : (

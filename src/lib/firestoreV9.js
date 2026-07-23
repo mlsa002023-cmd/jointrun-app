@@ -64,6 +64,12 @@ function rechecksCol(uid, eventId) {
 function comparisonsCol(uid, eventId) {
   return collection(db, "users", uid, "v9Events", eventId, "comparisons");
 }
+function decisionsCol(uid, eventId) {
+  return collection(db, "users", uid, "v9Events", eventId, "decisions");
+}
+function outcomesCol(uid, eventId) {
+  return collection(db, "users", uid, "v9Events", eventId, "outcomes");
+}
 
 /** S02 — 트리거 선택 시점에 Event를 만든다. */
 export async function createV9Event(uid, { primaryTrigger, secondaryTriggers = [], contextNote = "" }) {
@@ -81,7 +87,7 @@ export async function createV9Event(uid, { primaryTrigger, secondaryTriggers = [
   if (USE_DEMO_STORE) {
     const id = nextDemoId("evt");
     const now = new Date();
-    getDemoEvents(uid).push({ id, ...base, createdAt: now, updatedAt: now, captures: [], rechecks: [], comparisons: [] });
+    getDemoEvents(uid).push({ id, ...base, createdAt: now, updatedAt: now, captures: [], rechecks: [], comparisons: [], decisions: [], outcomes: [] });
     return id;
   }
   const ref = await addDoc(eventsCol(uid), { ...base, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -244,6 +250,95 @@ export async function saveComparison(uid, eventId, { baselineCaptureId, currentC
   return ref.id;
 }
 
+/** S12 — Decision Log: 무엇을 선택했고 왜 선택했는지 기록한다. 추천·정답 표시는 UI 쪽 책임(여기선 저장만). */
+export async function saveDecision(uid, eventId, { decisionType, decisionLabel, reason, startedAt, memo }) {
+  if (!uid || !eventId) return null;
+  const base = {
+    schemaVersion: V9_SCHEMA_VERSION,
+    decisionType, decisionLabel: decisionLabel ?? null, reason,
+    startedAt: startedAt ?? new Date().toISOString(),
+    memo: memo?.trim() || null,
+  };
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event) return null;
+    const id = nextDemoId("dec");
+    const now = new Date();
+    event.decisions.push({ id, ...base, createdAt: now, updatedAt: now });
+    event.status = EVENT_STATUS.DECISION_LOGGED;
+    event.updatedAt = now;
+    return id;
+  }
+  const ref = await addDoc(decisionsCol(uid, eventId), { ...base, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  await updateDoc(eventDoc(uid, eventId), { status: EVENT_STATUS.DECISION_LOGGED, updatedAt: serverTimestamp() });
+  return ref.id;
+}
+
+/** S13 — Outcome: 선택 이후 어떻게 느꼈는지 기록한다. 자동으로 호전/악화를 판정하지 않는다. */
+export async function saveOutcome(uid, eventId, { perceivedChange, continuedAction, note }) {
+  if (!uid || !eventId) return null;
+  const base = {
+    schemaVersion: V9_SCHEMA_VERSION,
+    perceivedChange, continuedAction, note: note?.trim() || null,
+  };
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event) return null;
+    const id = nextDemoId("out");
+    const now = new Date();
+    event.outcomes.push({ id, ...base, recordedAt: now });
+    event.status = EVENT_STATUS.OUTCOME_LOGGED;
+    event.updatedAt = now;
+    return id;
+  }
+  const ref = await addDoc(outcomesCol(uid, eventId), { ...base, recordedAt: serverTimestamp() });
+  await updateDoc(eventDoc(uid, eventId), { status: EVENT_STATUS.OUTCOME_LOGGED, updatedAt: serverTimestamp() });
+  return ref.id;
+}
+
+function toJsDate(value) {
+  return value?.toDate ? value.toDate() : value;
+}
+
+/**
+ * 개인 타임라인(S14)·4주 리포트(S15)용 — Event 1건의 모든 하위 데이터(캡처·재확인·비교·
+ * Decision·Outcome)를 한 번에 불러온다. 원본 이미지·랜드마크는 애초에 저장하지 않으므로
+ * 여기서도 다루지 않는다 — 대표님 지시(RC1 비교 화면 제약)에 따라 사용자 입력값과 메타데이터만.
+ */
+export async function getEventDetail(uid, eventId) {
+  if (!uid || !eventId) return null;
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event) return null;
+    return {
+      ...event,
+      rechecks: [...event.rechecks].sort((a, b) => a.dueAt - b.dueAt),
+      captures: [...event.captures],
+      comparisons: [...event.comparisons],
+      decisions: [...event.decisions],
+      outcomes: [...event.outcomes],
+    };
+  }
+  const [eventSnap, capturesSnap, rechecksSnap, comparisonsSnap, decisionsSnap, outcomesSnap] = await Promise.all([
+    getDoc(eventDoc(uid, eventId)),
+    getDocs(query(capturesCol(uid, eventId), orderBy("capturedAt", "asc"))),
+    getDocs(query(rechecksCol(uid, eventId), orderBy("dueAt", "asc"))),
+    getDocs(query(comparisonsCol(uid, eventId), orderBy("viewedAt", "asc"))),
+    getDocs(query(decisionsCol(uid, eventId), orderBy("createdAt", "asc"))),
+    getDocs(query(outcomesCol(uid, eventId), orderBy("recordedAt", "asc"))),
+  ]);
+  if (!eventSnap.exists()) return null;
+  return {
+    id: eventSnap.id,
+    ...eventSnap.data(),
+    captures: capturesSnap.docs.map((d) => ({ id: d.id, ...d.data(), capturedAt: toJsDate(d.data().capturedAt) })),
+    rechecks: rechecksSnap.docs.map((d) => ({ id: d.id, ...d.data(), dueAt: toJsDate(d.data().dueAt), completedAt: toJsDate(d.data().completedAt) })),
+    comparisons: comparisonsSnap.docs.map((d) => ({ id: d.id, ...d.data(), viewedAt: toJsDate(d.data().viewedAt) })),
+    decisions: decisionsSnap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: toJsDate(d.data().createdAt) })),
+    outcomes: outcomesSnap.docs.map((d) => ({ id: d.id, ...d.data(), recordedAt: toJsDate(d.data().recordedAt) })),
+  };
+}
+
 export async function getCapture(uid, eventId, captureId) {
   if (!uid || !eventId || !captureId) return null;
   if (USE_DEMO_STORE) {
@@ -306,4 +401,11 @@ export async function getV9EventHistory(uid, count = 20) {
   }
   const snap = await getDocs(query(eventsCol(uid), orderBy("createdAt", "desc"), limit(count)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** 개인 타임라인(S14)용 — 최근 Event들을 하위 데이터까지 채워서 반환한다(작은 개수만 다룬다는 전제). */
+export async function getV9EventHistoryDetailed(uid, count = 5) {
+  if (!uid) return [];
+  const events = await getV9EventHistory(uid, count);
+  return Promise.all(events.map((e) => getEventDetail(uid, e.id)));
 }

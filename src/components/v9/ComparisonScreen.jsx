@@ -27,6 +27,13 @@ const NON_COMPARABLE_LABEL = {
   missing_capture: "비교할 기록을 찾을 수 없어요",
 };
 
+function fmtDate(date) {
+  if (!date) return "-";
+  const d = date?.toDate ? date.toDate() : date;
+  return new Date(d).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+}
+const HAND_LABEL = { left: "왼손", right: "오른손" };
+
 export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed }) {
   const [change, setChange] = useState(null);
   const { comparable, reasons } = evaluateComparability(baselineCapture, currentCapture);
@@ -40,7 +47,7 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
       </button>
 
       <div style={{ marginTop: 8, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>과거의 나와 비교</div>
+        <div style={{ fontSize: 11, color: "#122A5C", fontWeight: 700, marginBottom: 6 }}>과거의 나와 비교</div>
         <div style={{ fontSize: 17, fontWeight: 900, color: "#0f172a", lineHeight: 1.4 }}>
           JOINTRUN은 관찰된 기록을 나란히 보여줍니다.
         </div>
@@ -66,6 +73,16 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 11, fontWeight: 800, color: "#94a3b8", marginBottom: 10 }}>
           <span>항목</span><span style={{ textAlign: "center" }}>기준선</span><span style={{ textAlign: "center" }}>지금</span>
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+          <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>촬영 날짜</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{fmtDate(baselineCapture?.capturedAt)}</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{fmtDate(currentCapture?.capturedAt)}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+          <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>사용 손</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[baselineCapture?.handSide] ?? "-"}</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[currentCapture?.handSide] ?? "-"}</span>
+        </div>
         {SYMPTOM_ROWS.map((row) => (
           <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.label}</span>
@@ -88,9 +105,9 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
               onClick={() => setChange(opt.value)}
               style={{
                 minHeight: 48, borderRadius: 12, fontSize: 13, fontWeight: 800,
-                border: change === opt.value ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
-                background: change === opt.value ? "#eff6ff" : "white",
-                color: change === opt.value ? "#1d4ed8" : "#334155",
+                border: change === opt.value ? "2px solid #122A5C" : "1px solid #e2e8f0",
+                background: change === opt.value ? "#EEF1F8" : "white",
+                color: change === opt.value ? "#122A5C" : "#334155",
               }}
             >
               {opt.label}
@@ -102,7 +119,7 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
       <button
         onClick={() => change && onSubmit({ comparable, nonComparableReasons: reasons, userPerceivedChange: change })}
         disabled={!change}
-        style={{ marginTop: 24, width: "100%", minHeight: 48, background: change ? "#1d4ed8" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
+        style={{ marginTop: 24, width: "100%", minHeight: 48, background: change ? "#122A5C" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
       >
         저장하기
       </button>

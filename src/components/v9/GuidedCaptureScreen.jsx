@@ -39,7 +39,7 @@ function MockCaptureScreen({ handSide, onCaptured, onCancel }) {
         <button
           type="button"
           onClick={() => onCaptured({ qualityStatus: "pass", qualityFlags: [] })}
-          style={{ minHeight: 48, background: "#1d4ed8", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800 }}
+          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800 }}
         >
           샘플 캡처 (품질 통과)
         </button>
@@ -191,7 +191,7 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
             <div style={{ position: "absolute", left: 16, right: 16, bottom: 96, zIndex: 20 }}>
               <div style={{ background: "rgba(15,23,42,0.88)", borderRadius: 16, padding: 16, textAlign: "center" }}>
                 {justCaptured ? (
-                  <p style={{ color: "#93c5fd", fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <p style={{ color: "#6FD8CC", fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     <Check size={18} /> 촬영 완료
                   </p>
                 ) : (
@@ -200,7 +200,7 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
                       {quality.status === "pass" ? "좋아요! 이 상태를 유지해주세요." : quality.message}
                     </p>
                     <div style={{ marginTop: 12, height: 6, borderRadius: 999, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${progress * 100}%`, background: "#60a5fa", transition: "width 100ms linear" }} />
+                      <div style={{ height: "100%", width: `${progress * 100}%`, background: "#6FD8CC", transition: "width 100ms linear" }} />
                     </div>
                     {attempts >= MAX_ATTEMPTS_BEFORE_OVERRIDE && (
                       <button
@@ -220,7 +220,7 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
 
         {phase === "ai_loading" && (
           <div style={{ position: "absolute", top: 12, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 20 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#93c5fd", background: "rgba(15,23,42,0.85)", padding: "6px 14px", borderRadius: 999 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6FD8CC", background: "rgba(15,23,42,0.85)", padding: "6px 14px", borderRadius: 999 }}>
               AI 모델 로딩중
             </span>
           </div>

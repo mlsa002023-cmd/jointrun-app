@@ -7,20 +7,23 @@ function formatDate(date) {
 
 export default function BaselineSavedScreen({ mode = "baseline", week2DueAt, week4DueAt, onDone }) {
   const isBaseline = mode === "baseline";
+  const isDecisionLoop = mode === "decision";
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8fafc", padding: "24px 24px 32px" }}>
-      <div style={{ background: "#1d4ed8", color: "white", width: 60, height: 60, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 20px rgba(29,78,216,0.3)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F4F6FA", padding: "24px 24px 32px" }}>
+      <div style={{ background: "#122A5C", color: "white", width: 60, height: 60, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 20px rgba(18,42,92,0.3)" }}>
         <Check style={{ width: 28, height: 28 }} />
       </div>
 
-      <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", textAlign: "center", lineHeight: 1.4 }}>
-        {isBaseline ? "오늘의 상태가 첫 기준선으로 저장되었습니다." : "재확인 기록이 저장되었습니다."}
+      <div style={{ fontSize: 18, fontWeight: 900, color: "#16213D", textAlign: "center", lineHeight: 1.4 }}>
+        {isBaseline && "오늘의 상태가 첫 기준선으로 저장되었습니다."}
+        {mode === "recheck" && "재확인 기록이 저장되었습니다."}
+        {isDecisionLoop && "선택과 결과가 모두 기록되었습니다."}
       </div>
-      <div style={{ fontSize: 13, color: "#64748b", marginTop: 10, textAlign: "center", lineHeight: 1.6, maxWidth: 320 }}>
-        {isBaseline
-          ? "2주와 4주 뒤 같은 조건으로 다시 확인하면 과거의 나와 비교할 수 있습니다."
-          : "이 기록은 기준선과 비교할 수 있는 두 번째(또는 세 번째) 지점이 되었습니다."}
+      <div style={{ fontSize: 13, color: "#5B6478", marginTop: 10, textAlign: "center", lineHeight: 1.6, maxWidth: 320 }}>
+        {isBaseline && "2주와 4주 뒤 같은 조건으로 다시 확인하면 과거의 나와 비교할 수 있습니다."}
+        {mode === "recheck" && "이 기록은 기준선과 비교할 수 있는 두 번째(또는 세 번째) 지점이 되었습니다."}
+        {isDecisionLoop && "타임라인과 4주 리포트에서 이번 판단 루프 전체를 확인할 수 있습니다."}
       </div>
 
       {isBaseline && week2DueAt && week4DueAt && (
@@ -38,7 +41,7 @@ export default function BaselineSavedScreen({ mode = "baseline", week2DueAt, wee
 
       <button
         onClick={onDone}
-        style={{ marginTop: 28, width: "100%", maxWidth: 320, minHeight: 48, background: "#1d4ed8", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        style={{ marginTop: 28, width: "100%", maxWidth: 320, minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         <Compass style={{ width: 16, height: 16 }} />홈으로
       </button>

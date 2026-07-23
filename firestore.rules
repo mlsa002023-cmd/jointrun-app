@@ -40,6 +40,21 @@ service cloud.firestore {
             || data.userPerceivedChange in ['less_discomfort', 'same', 'more_discomfort', 'unclear']);
     }
 
+    // RC1 디자인 통합 — Decision Log/Outcome도 v9Events와 동일 원칙(소유권+스키마 검증) 적용.
+    function isV9DecisionShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'decisionType', 'reason'])
+        && data.decisionType in ['hospital_consult', 'exercise_stretch', 'brace_support',
+                                  'rest_or_compress', 'medication_supplement', 'observe_only', 'custom']
+        && data.reason in ['discomfort', 'medical_advice', 'recommendation',
+                           'prior_experience', 'convenience_cost', 'custom'];
+    }
+
+    function isV9OutcomeShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'perceivedChange', 'continuedAction'])
+        && data.perceivedChange in ['less', 'same', 'more', 'unsure']
+        && data.continuedAction in ['continue', 'change', 'stop', 'consult'];
+    }
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
@@ -98,6 +113,20 @@ service cloud.firestore {
           allow read: if request.auth != null && request.auth.uid == userId;
           allow create: if request.auth != null && request.auth.uid == userId
                           && isV9ComparisonShape(request.resource.data);
+          allow update, delete: if false;
+        }
+
+        match /decisions/{decisionId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9DecisionShape(request.resource.data);
+          allow update, delete: if false; // 기록 보존 — 스캔/비교와 동일 원칙
+        }
+
+        match /outcomes/{outcomeId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9OutcomeShape(request.resource.data);
           allow update, delete: if false;
         }
       }

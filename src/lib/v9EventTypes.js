@@ -53,18 +53,83 @@ export const PERCEIVED_CHANGE = {
   UNCLEAR: "unclear",
 };
 
-// 05_DATA_ANALYTICS_SPEC.md §3 — 이번 P0 범위(트리거→기준선→재확인→비교)에서 실제로 발생시키는 이벤트만.
-// Decision Log/Outcome/결제 관련 이벤트는 해당 기능(P1)을 구현할 때 함께 추가한다.
+// S12 Decision Log — "무엇을 선택했나요?" (CLAUDE_CODE_JOINTRUN_V9_DESIGN_INTEGRATION_PROMPT.md §4)
+export const DECISION_TYPE = {
+  HOSPITAL: "hospital_consult",
+  EXERCISE: "exercise_stretch",
+  BRACE: "brace_support",
+  REST: "rest_or_compress",
+  MEDICATION: "medication_supplement",
+  OBSERVE: "observe_only",
+  CUSTOM: "custom",
+};
+export const DECISION_TYPE_LABEL = {
+  [DECISION_TYPE.HOSPITAL]: "병원 상담",
+  [DECISION_TYPE.EXERCISE]: "운동·스트레칭",
+  [DECISION_TYPE.BRACE]: "보호대·보조기",
+  [DECISION_TYPE.REST]: "찜질·휴식",
+  [DECISION_TYPE.MEDICATION]: "약·영양제",
+  [DECISION_TYPE.OBSERVE]: "경과 관찰",
+  [DECISION_TYPE.CUSTOM]: "기타",
+};
+
+// S12 — "왜 이 선택을 했나요?" (04_APP_PRD_V9.md S10과 동일 항목 재사용)
+export const DECISION_REASON = {
+  DISCOMFORT: "discomfort",
+  MEDICAL_ADVICE: "medical_advice",
+  RECOMMENDATION: "recommendation",
+  PRIOR_EXPERIENCE: "prior_experience",
+  CONVENIENCE_COST: "convenience_cost",
+  CUSTOM: "custom",
+};
+export const DECISION_REASON_LABEL = {
+  [DECISION_REASON.DISCOMFORT]: "증상이 불편해서",
+  [DECISION_REASON.MEDICAL_ADVICE]: "의료진 권유",
+  [DECISION_REASON.RECOMMENDATION]: "주변 추천",
+  [DECISION_REASON.PRIOR_EXPERIENCE]: "이전 경험",
+  [DECISION_REASON.CONVENIENCE_COST]: "사용 편의성·비용",
+  [DECISION_REASON.CUSTOM]: "기타",
+};
+
+// S13 Outcome — Comparison의 PERCEIVED_CHANGE와 별개 엔터티(지시서 §4 필드명 그대로).
+export const PERCEIVED_OUTCOME = { LESS: "less", SAME: "same", MORE: "more", UNSURE: "unsure" };
+export const PERCEIVED_OUTCOME_LABEL = {
+  [PERCEIVED_OUTCOME.LESS]: "덜 불편함",
+  [PERCEIVED_OUTCOME.SAME]: "비슷함",
+  [PERCEIVED_OUTCOME.MORE]: "더 불편함",
+  [PERCEIVED_OUTCOME.UNSURE]: "판단 어려움",
+};
+
+export const CONTINUED_ACTION = { CONTINUE: "continue", CHANGE: "change", STOP: "stop", CONSULT: "consult" };
+export const CONTINUED_ACTION_LABEL = {
+  [CONTINUED_ACTION.CONTINUE]: "계속하기",
+  [CONTINUED_ACTION.CHANGE]: "다른 방법으로 변경",
+  [CONTINUED_ACTION.STOP]: "중단하기",
+  [CONTINUED_ACTION.CONSULT]: "전문가와 상담",
+};
+
+// 05_DATA_ANALYTICS_SPEC.md §3 + RC1 디자인 통합 지시서 §7 — 실제로 발생시키는 이벤트 전체.
 export const V9_ANALYTICS_EVENTS = {
+  ONBOARDING_STARTED: "onboarding_started",
+  CONSENT_COMPLETED: "consent_completed",
   TRIGGER_SELECTED: "trigger_selected",
   CAPTURE_STARTED: "capture_started",
+  CAPTURE_QUALITY_PASSED: "capture_quality_passed",
   CAPTURE_QUALITY_FAILED: "capture_quality_failed",
   CAPTURE_COMPLETED: "capture_completed",
-  SYMPTOM_SAVED: "symptom_saved",
+  SYMPTOM_SNAPSHOT_SAVED: "symptom_snapshot_saved",
   BASELINE_CREATED: "baseline_created",
+  RECHECK_DUE: "recheck_due",
   RECHECK_SCHEDULED: "recheck_scheduled",
   RECHECK_STARTED: "recheck_started",
   RECHECK_COMPLETED: "recheck_completed",
   RECHECK_SKIPPED: "recheck_skipped",
   COMPARISON_VIEWED: "comparison_viewed",
+  DECISION_LOGGED: "decision_logged",
+  OUTCOME_LOGGED: "outcome_logged",
+  TIMELINE_VIEWED: "timeline_viewed",
+  REPORT_VIEWED: "report_viewed",
+  PRICING_VIEWED: "pricing_viewed",
+  PILOT_CTA_CLICKED: "pilot_cta_clicked",
+  DECISION_LOOP_COMPLETED: "decision_loop_completed",
 };

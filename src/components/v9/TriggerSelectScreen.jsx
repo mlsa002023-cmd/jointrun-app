@@ -23,7 +23,7 @@ export default function TriggerSelectScreen({ onSubmit, onCancel }) {
       </button>
 
       <div style={{ marginTop: 8, marginBottom: 24 }}>
-        <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>기록을 시작합니다</div>
+        <div style={{ fontSize: 11, color: "#122A5C", fontWeight: 700, marginBottom: 6 }}>기록을 시작합니다</div>
         <div style={{ fontSize: 19, fontWeight: 900, color: "#0f172a", lineHeight: 1.35 }}>오늘 왜 기록하려고 하나요?</div>
         <div style={{ fontSize: 13, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
           주된 이유 1개를 먼저 골라주세요. 함께 해당하는 것이 있다면 추가로 선택할 수 있어요.
@@ -43,9 +43,9 @@ export default function TriggerSelectScreen({ onSubmit, onCancel }) {
                 minHeight: 56,
                 padding: "14px 16px",
                 borderRadius: 14,
-                border: isPrimary ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
-                background: isPrimary ? "#eff6ff" : "white",
-                color: isPrimary ? "#1d4ed8" : "#334155",
+                border: isPrimary ? "2px solid #122A5C" : "1px solid #e2e8f0",
+                background: isPrimary ? "#EEF1F8" : "white",
+                color: isPrimary ? "#122A5C" : "#334155",
                 fontSize: 15,
                 fontWeight: 700,
                 display: "flex",
@@ -62,9 +62,9 @@ export default function TriggerSelectScreen({ onSubmit, onCancel }) {
                   onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); toggleSecondary(t.value); } }}
                   style={{
                     fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
-                    border: isSecondary ? "1px solid #1d4ed8" : "1px solid #cbd5e1",
-                    color: isSecondary ? "#1d4ed8" : "#94a3b8",
-                    background: isSecondary ? "#eff6ff" : "transparent",
+                    border: isSecondary ? "1px solid #122A5C" : "1px solid #cbd5e1",
+                    color: isSecondary ? "#122A5C" : "#94a3b8",
+                    background: isSecondary ? "#EEF1F8" : "transparent",
                   }}
                 >
                   {isSecondary ? "함께 선택됨" : "함께 해당"}
@@ -80,7 +80,7 @@ export default function TriggerSelectScreen({ onSubmit, onCancel }) {
       <button
         onClick={() => primary && onSubmit({ primaryTrigger: primary, secondaryTriggers: secondary })}
         disabled={!primary}
-        style={{ marginTop: 24, width: "100%", minHeight: 48, background: primary ? "#1d4ed8" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
+        style={{ marginTop: 24, width: "100%", minHeight: 48, background: primary ? "#122A5C" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
       >
         다음
       </button>

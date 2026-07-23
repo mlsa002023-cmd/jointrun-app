@@ -14,8 +14,8 @@ function ScaleRow({ label, value, onChange }) {
             onClick={() => onChange(n)}
             style={{
               minHeight: 32, borderRadius: 8, fontSize: 11, fontWeight: 700,
-              border: value === n ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
-              background: value === n ? "#1d4ed8" : "white",
+              border: value === n ? "2px solid #122A5C" : "1px solid #e2e8f0",
+              background: value === n ? "#122A5C" : "white",
               color: value === n ? "white" : "#64748b",
             }}
           >
@@ -41,9 +41,9 @@ function SegmentRow({ label, options, value, onChange }) {
             onClick={() => onChange(opt.value)}
             style={{
               minHeight: 40, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
-              border: value === opt.value ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
-              background: value === opt.value ? "#eff6ff" : "white",
-              color: value === opt.value ? "#1d4ed8" : "#64748b",
+              border: value === opt.value ? "2px solid #122A5C" : "1px solid #e2e8f0",
+              background: value === opt.value ? "#EEF1F8" : "white",
+              color: value === opt.value ? "#122A5C" : "#64748b",
             }}
           >
             {opt.label}
@@ -71,7 +71,7 @@ export default function SymptomSnapshotForm({ onSubmit, onCancel }) {
       </button>
 
       <div style={{ marginTop: 8, marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>증상·상황 기록</div>
+        <div style={{ fontSize: 11, color: "#122A5C", fontWeight: 700, marginBottom: 6 }}>증상·상황 기록</div>
         <div style={{ fontSize: 17, fontWeight: 900, color: "#0f172a", lineHeight: 1.4 }}>지금 느껴지는 상태를 남겨주세요</div>
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>모두 사용자가 느낀 정도를 직접 기록하는 값입니다.</div>
       </div>
@@ -112,7 +112,7 @@ export default function SymptomSnapshotForm({ onSubmit, onCancel }) {
       <button
         onClick={() => canSubmit && onSubmit({ painSelfReport, stiffnessSelfReport, swellingSelfReport, warmthSelfReport, functionDifficulty, note: note.trim() || null, recordedAt: new Date().toISOString() })}
         disabled={!canSubmit}
-        style={{ marginTop: 28, width: "100%", minHeight: 48, background: canSubmit ? "#1d4ed8" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
+        style={{ marginTop: 28, width: "100%", minHeight: 48, background: canSubmit ? "#122A5C" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
       >
         저장하기
       </button>
