@@ -26,7 +26,7 @@ import ComparisonScreen from "./ComparisonScreen";
 import DecisionLogScreen from "./DecisionLogScreen";
 import OutcomeScreen from "./OutcomeScreen";
 
-export default function DecisionLoopFlow({ mode, event, recheck, onClose, onCompleted, simulateNetworkError }) {
+export default function DecisionLoopFlow({ mode, event, recheck, onClose, onCompleted, simulateNetworkError, forceMockCapture }) {
   const { currentUser } = useAuth();
   const repository = useV9Repository();
   const uid = currentUser?.uid;
@@ -167,7 +167,7 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   // GuidedCaptureScreen은 이미 자체적으로 position:fixed 풀스크린이라 그대로 반환한다.
   // 나머지 화면은 minHeight:100vh만 쓰므로, 여기서 fixed 오버레이로 감싸지 않으면 홈 화면
   // 콘텐츠 아래에 이어 붙는 형태로 렌더링된다(RC0에서 실제로 겪은 버그) — 전부 이 컨테이너로 감싼다.
-  if (step === "capture") return <GuidedCaptureScreen handSide={handSide} onCaptured={handleCaptured} onCancel={onClose} />;
+  if (step === "capture") return <GuidedCaptureScreen handSide={handSide} onCaptured={handleCaptured} onCancel={onClose} forceMock={forceMockCapture} />;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, overflowY: "auto", background: "#F4F6FA" }}>

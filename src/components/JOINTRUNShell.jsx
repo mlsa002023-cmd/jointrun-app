@@ -87,6 +87,10 @@ const v9Repository = useV9Repository();
 const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "baseline"|"recheck", recheck? } | null
 const [qaSimulateNetworkError, setQaSimulateNetworkError] = useState(false);
 const [qaResetting, setQaResetting] = useState(false);
+// QA 계정도 기본은 Mock Capture(빠른 시나리오 검증)지만, 실기기에서는 이 토글을 꺼서
+// 실제 카메라 경로를 같은 계정으로 검수할 수 있어야 한다("Mock Capture와 실제 카메라를
+// 명확히 구분" 요건) — 보안 게이트가 아니라 QA 사용자 편의를 위한 선택지일 뿐이다.
+const [qaUseMockCapture, setQaUseMockCapture] = useState(true);
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -380,6 +384,11 @@ useEffect(() => {
                   <div style={{background:"rgba(250,204,21,0.08)",border:"1px solid rgba(202,138,4,0.35)",borderRadius:14,padding:"12px 14px",marginBottom:12}}>
                     <div style={{fontSize:10,color:"#854d0e",fontWeight:800,letterSpacing:0.5,marginBottom:8}}>QA 모드 — 검수 전용 도구</div>
                     <button
+                      onClick={() => setQaUseMockCapture((v) => !v)}
+                      style={{width:"100%",minHeight:40,background:"white",color:"#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700,marginBottom:8}}>
+                      촬영 방식: {qaUseMockCapture ? "Mock Capture (카메라 없이 진행)" : "실제 카메라 (실기기 검수용)"}
+                    </button>
+                    <button
                       onClick={() => setQaSimulateNetworkError((v) => !v)}
                       style={{width:"100%",minHeight:40,background:qaSimulateNetworkError ? "#B3462E" : "white",color:qaSimulateNetworkError ? "white" : "#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700,marginBottom:8}}>
                       네트워크 오류 시뮬레이션: {qaSimulateNetworkError ? "켜짐 (다음 저장이 강제로 실패합니다)" : "꺼짐"}
@@ -515,6 +524,7 @@ useEffect(() => {
           onClose={() => setDecisionLoop(null)}
           onCompleted={() => { refreshAgenda(); triggerFeedback("기록이 저장되었습니다."); }}
           simulateNetworkError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
+          forceMockCapture={shouldShowQaTools(currentUser) ? qaUseMockCapture : undefined}
         />
       )}
 

@@ -64,9 +64,15 @@ function MockCaptureScreen({ handSide, onCaptured, onCancel }) {
   );
 }
 
-export default function GuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
+// forceMock — QA 패널의 "촬영 방식" 토글에서 내려오는 값. QA 계정이라고 해서 항상 Mock
+// Capture만 보게 되면 실기기 카메라 경로를 같은 계정으로 검수할 방법이 없어진다(대표 검수
+// 요건 — "Mock Capture와 실제 카메라를 명확히 구분"). 그래서 QA 계정에게도 기본은 Mock이되,
+// 토글로 실제 카메라 경로를 선택할 수 있게 한다. forceMock 자체는 보안 게이트가 아니다 —
+// 실제 게이트는 shouldShowQaTools(currentUser)이며, 이 값이 false면 forceMock이 true여도
+// 절대 MockCaptureScreen을 보여주지 않는다.
+export default function GuidedCaptureScreen({ handSide, onCaptured, onCancel, forceMock = true }) {
   const { currentUser } = useAuth();
-  if (shouldShowQaTools(currentUser)) {
+  if (shouldShowQaTools(currentUser) && forceMock) {
     return <MockCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;
   }
   return <RealGuidedCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;
