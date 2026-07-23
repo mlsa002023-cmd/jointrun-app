@@ -1,0 +1,14 @@
+﻿Priority,Task ID,Owner,Workstream,Task,Deliverable / Done,Dependency,Status
+P0,JR-WEB-201,Growth+Web,Homepage,현재 홈페이지 V9 Gap 반영,Hero/SEO/WHY/HOW/CTA/Footer 교체,none,READY
+P0,JR-WEB-202,Engineering,Homepage,점수·Inflammation·추천 비공개,"검색 0건, feature flag 보존",JR-WEB-201,READY
+P0,JR-APP-203,Product+Engineering,App,트리거→기준선 핵심 경로,S02~S06 E2E 통과,repo audit,READY
+P0,JR-APP-204,Product+Engineering,App,2주·4주 재확인·비교,재확인 상태와 비교 화면,JR-APP-203,READY
+P0,JR-TRUST-205,Trust+QA,Trust,비진단·개인정보 카피,"금지표현 0건, 삭제/철회 경로",JR-WEB-201/JR-APP-203,READY
+P1,JR-APP-206,Product+Engineering,App,Decision Log·Outcome,Decision Loop 완료 가능,JR-APP-204,READY
+P1,JR-APP-207,Product+Design,App,타임라인·4주 리포트,리포트/빈상태/오류상태,JR-APP-206,READY
+P1,JR-DATA-208,Engineering+PMO,Analytics,데이터·이벤트 스키마,KPI 쿼리와 중복방지 테스트,JR-APP-203,READY
+P1,JR-BIZ-209,Growth+Engineering,Revenue,가격·예약 feature flag,무료/4주/Premium 구분,JR-WEB-201,READY
+P1,JR-DES-210,Design,Design,웹·앱 디자인 시스템,"17px/48px/AA, 개발 핸드오프",copy+PRD,READY
+P0,JR-QA-211,QA+PMO,QA,통합 수용검사,QA Gate P0 all PASS,all P0,BLOCKED
+P0,JR-REL-212,Engineering,Release,프리뷰·롤백 보고,preview URL/test/migration/rollback,JR-QA-211,BLOCKED
+CEO,JR-DEC-213,CEO,Decision,운영 배포·가격·점수 보존 결정,3개 결정 완료,JR-REL-212,WAITING
