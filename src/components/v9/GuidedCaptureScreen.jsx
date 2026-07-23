@@ -86,6 +86,8 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
   const [progress, setProgress] = useState(0);
   const [attempts, setAttempts] = useState(0);
   const [justCaptured, setJustCaptured] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [retryKey, setRetryKey] = useState(0); // CameraView를 강제로 remount해서 getUserMedia를 다시 요청하기 위한 key
 
   const stopLoop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -167,7 +169,18 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
     rafRef.current = requestAnimationFrame(detectLoop);
   }, [detectLoop]);
 
-  const handleCameraError = useCallback(() => setPhase("camera_error"), []);
+  // Phase D(RC1) — 권한 거부(NotAllowedError)와 그 외 카메라 오류(장치 없음/사용 중 등)를 구분해서
+  // 안내한다. 권한 거부는 브라우저 설정 안내 + 재요청 버튼, 그 외는 일반 재시도만 제공한다.
+  const handleCameraError = useCallback((err) => {
+    setPermissionDenied(err?.name === "NotAllowedError");
+    setPhase("camera_error");
+  }, []);
+
+  const retryCamera = useCallback(() => {
+    setPermissionDenied(false);
+    setPhase("camera_starting");
+    setRetryKey((k) => k + 1);
+  }, []);
 
   const forceCapture = () => {
     finishCapture({ status: quality.status === "retry" ? "unreliable" : quality.status, flags: quality.flags });
@@ -176,7 +189,7 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
-        <CameraView ref={cameraRef} active onReady={handleCameraReady} onError={handleCameraError} />
+        <CameraView key={retryKey} ref={cameraRef} active onReady={handleCameraReady} onError={handleCameraError} />
 
         {phase === "guiding" && (
           <>
@@ -226,13 +239,40 @@ function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
           </div>
         )}
 
-        {(phase === "camera_error" || phase === "ai_error") && (
+        {phase === "camera_error" && permissionDenied && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,6,23,0.95)", padding: 24 }}>
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 16, padding: 20, textAlign: "center", maxWidth: 300 }}>
+              <p style={{ fontSize: 15, fontWeight: 800, color: "#92400e" }}>카메라 권한이 필요합니다</p>
+              <p style={{ fontSize: 13, color: "#a16207", marginTop: 8, lineHeight: 1.6 }}>
+                기록을 남기려면 카메라 접근을 허용해야 해요. 브라우저 주소창 옆 카메라 아이콘(또는 설정 &gt; 사이트 권한)에서 카메라를 &ldquo;허용&rdquo;으로 바꾼 뒤 다시 시도해주세요.
+              </p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
+                <button onClick={retryCamera} style={{ minHeight: 44, padding: "0 18px", background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
+                  다시 요청하기
+                </button>
+                <button onClick={onCancel} style={{ minHeight: 44, padding: "0 18px", background: "transparent", border: "1px solid #d97706", color: "#92400e", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
+                  나중에 하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {((phase === "camera_error" && !permissionDenied) || phase === "ai_error") && (
           <div style={{ position: "absolute", inset: 0, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,6,23,0.95)", padding: 24 }}>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 16, padding: 20, textAlign: "center", maxWidth: 280 }}>
               <p style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>
                 {phase === "camera_error" ? "카메라에 접근할 수 없습니다" : "지금은 촬영할 수 없습니다"}
               </p>
-              <p style={{ fontSize: 12, color: "#a16207", marginTop: 8 }}>잠시 후 다시 시도해주세요.</p>
+              <p style={{ fontSize: 12, color: "#a16207", marginTop: 8 }}>다른 앱이 카메라를 사용 중이거나 장치를 찾을 수 없을 수 있습니다.</p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
+                <button onClick={retryCamera} style={{ minHeight: 44, padding: "0 18px", background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
+                  다시 시도
+                </button>
+                <button onClick={onCancel} style={{ minHeight: 44, padding: "0 18px", background: "transparent", border: "1px solid #d97706", color: "#92400e", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
+                  촬영 취소
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -6,6 +6,11 @@
 //   mode="decision" — 비교 이후 Decision Log + Outcome 기록 (S12~S13)
 // 각 화면(S02~S13)은 이 파일이 조립하는 개별 컴포넌트로 분리되어 있다 — 여기는 상태 전이와
 // Repository 호출·분석 이벤트 발생만 담당한다(UI 계층에 비즈니스 로직을 두지 않는다는 원칙).
+//
+// 네트워크 오류 처리(RC1 §4): Firestore 호출이 실패해도 화면 전환을 하지 않고 에러 배너 +
+// "다시 시도"만 보여준다 — 자식 화면(SymptomSnapshotForm 등)이 언마운트되지 않으므로 사용자가
+// 입력한 값은 그대로 남아있고, 같은 제출 버튼을 다시 누르면 재시도된다(입력 손실 방지).
+// submitting 플래그로 중복 제출도 막는다.
 // ─────────────────────────────────────────────
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -37,15 +42,32 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   const [baselineCapture, setBaselineCapture] = useState(null);
   const [currentCapture, setCurrentCapture] = useState(null);
   const [decisionDraft, setDecisionDraft] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   const track = (name, params) => trackKpiEvent(name, uid, params);
 
-  const handleTriggerSubmit = async ({ primaryTrigger, secondaryTriggers }) => {
+  // 저장이 필요한 단계 공통 래퍼 — 실패해도 화면을 넘기지 않고 에러 배너만 띄운다.
+  const runStep = async (fn) => {
+    if (submitting) return; // 중복 제출 방지
+    setSubmitting(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      console.error("[DecisionLoopFlow] 저장 실패:", err);
+      setError("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTriggerSubmit = ({ primaryTrigger, secondaryTriggers }) => runStep(async () => {
     const newEventId = await repository.startEvent({ primaryTrigger, secondaryTriggers, contextNote: "" });
     setEventId(newEventId);
     track(V9_ANALYTICS_EVENTS.TRIGGER_SELECTED, { primaryTrigger, secondaryCount: secondaryTriggers.length });
     setStep("prep");
-  };
+  });
 
   const handlePrepSubmit = ({ handSide: side }) => {
     setHandSide(side);
@@ -63,7 +85,7 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
     setStep("symptom");
   };
 
-  const handleSymptomSubmit = async (symptomSnapshot) => {
+  const handleSymptomSubmit = (symptomSnapshot) => runStep(async () => {
     track(V9_ANALYTICS_EVENTS.SYMPTOM_SNAPSHOT_SAVED, { eventId, fieldsCompleted: Object.keys(symptomSnapshot).length });
 
     const newCaptureId = await repository.saveCapture(eventId, {
@@ -97,13 +119,13 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
     setBaselineCapture(baseline);
     setCurrentCapture(current);
     setStep("comparison");
-  };
+  });
 
   const handleComparisonViewed = ({ comparable }) => {
     track(V9_ANALYTICS_EVENTS.COMPARISON_VIEWED, { eventId, comparable });
   };
 
-  const handleComparisonSubmit = async ({ comparable, nonComparableReasons, userPerceivedChange }) => {
+  const handleComparisonSubmit = ({ comparable, nonComparableReasons, userPerceivedChange }) => runStep(async () => {
     await repository.saveComparison(eventId, {
       baselineCaptureId: event.baselineCaptureId,
       currentCaptureId: captureId,
@@ -112,24 +134,24 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
       userPerceivedChange,
     });
     setStep("saved");
-  };
+  });
 
   // ── mode="decision": 비교 이후 Decision Log → Outcome ──
-  const handleDecisionSubmit = async (decisionData) => {
+  const handleDecisionSubmit = (decisionData) => runStep(async () => {
     await repository.saveDecision(eventId, decisionData);
     track(V9_ANALYTICS_EVENTS.DECISION_LOGGED, { eventId, decisionType: decisionData.decisionType });
     setDecisionDraft(decisionData);
     setStep("outcome");
-  };
+  });
 
-  const handleOutcomeSubmit = async (outcomeData) => {
+  const handleOutcomeSubmit = (outcomeData) => runStep(async () => {
     await repository.saveOutcome(eventId, outcomeData);
     track(V9_ANALYTICS_EVENTS.OUTCOME_LOGGED, { eventId, perceivedChange: outcomeData.perceivedChange });
     // North Star — baseline_created→recheck_completed→comparison_viewed→decision_logged→outcome_logged
     // 체인이 전부 끝난 시점(이 모드에 진입할 수 있다는 것 자체가 앞 단계가 끝났다는 뜻)에만 기록한다.
     track(V9_ANALYTICS_EVENTS.DECISION_LOOP_COMPLETED, { eventId });
     setStep("saved");
-  };
+  });
 
   const handleDone = () => {
     onCompleted?.();
@@ -164,6 +186,23 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
           week4DueAt={recheckDueDates?.week4DueAt}
           onDone={handleDone}
         />
+      )}
+
+      {error && (
+        <div style={{ position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 400, background: "#FDF1EE", border: "1px solid #F3C7BB", borderRadius: 14, padding: 14, boxShadow: "0 20px 60px -30px rgba(18,42,92,0.25)" }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#B3462E" }}>{error}</p>
+          <button
+            onClick={() => setError(null)}
+            style={{ marginTop: 10, minHeight: 44, width: "100%", background: "#B3462E", color: "white", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700 }}
+          >
+            확인 (입력한 내용은 그대로 있어요 — 다시 저장해보세요)
+          </button>
+        </div>
+      )}
+      {submitting && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 350, background: "rgba(244,246,250,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#122A5C", background: "white", padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(18,42,92,0.15)" }}>저장 중...</span>
+        </div>
       )}
     </div>
   );
