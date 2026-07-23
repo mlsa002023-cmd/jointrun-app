@@ -63,9 +63,14 @@ export function summarizeFingers(fingers) {
 }
 
 // 카피 가이드라인(§5.2) — 관찰된 사실만 서술한다. 의료 효능 단정·원인 진단·처방·행동 지시 금지.
-export function buildRecommendation(score, rom) {
+// V9 정렬(JR-WEB-202) — 기본값은 "Finger Score" 문구를 뺀 관찰형 문장이다. 절대 점수 UI를
+// 되살릴 때(legacyScoreExperiment) 호출부에서 includeScoreLabel:true를 넘기면 된다.
+export function buildRecommendation(score, rom, { includeScoreLabel = false } = {}) {
   if (score >= 80) {
     return `손가락 가동 범위 ${rom}°로, 최근 측정 중 양호한 범위에 속합니다.`;
+  }
+  if (!includeScoreLabel) {
+    return `굴곡각 ${rom}°로 측정되었습니다.`;
   }
   if (score >= 60) {
     return `Finger Score ${score}점, 굴곡각 ${rom}°로 측정되었습니다.`;

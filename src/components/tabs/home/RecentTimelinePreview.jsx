@@ -5,6 +5,7 @@ import JTEmptyState from "../../ui/JTEmptyState";
 import { useTimelineData } from "../../../hooks/useTimelineData";
 import { formatTimelineDate } from "../../../lib/mergeTimeline";
 import { getTimelineIcon } from "../../../lib/eventIcons";
+import { FEATURE_FLAGS } from "../../../config/featureFlags";
 
 // HOME의 "최근 Timeline 요약" — TIMELINE 탭과 동일한 useTimelineData()를 재사용해 최신 3건만
 // 잘라 보여준다. 예전에는 이 컴포넌트가 getScanHistory/getEventHistory를 직접 호출해
@@ -33,7 +34,7 @@ function RecentTimelinePreview({ setActiveTab }) {
               <div key={`${item.kind}-${item.id}`} className="flex items-center gap-2 text-[11px] text-slate-700">
                 <span className="text-slate-400 shrink-0">{formatTimelineDate(item.date)}</span>
                 <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
-                <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                <span className="truncate">{item.label}{FEATURE_FLAGS.legacyScoreExperiment && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
               </div>
             );
           })}

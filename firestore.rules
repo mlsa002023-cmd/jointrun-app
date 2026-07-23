@@ -34,6 +34,27 @@ service cloud.firestore {
       match /habit/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // V9 Decision Loop(트리거→기준선→재확인→비교) — 05_DATA_ANALYTICS_SPEC.md.
+      // Event/재확인 상태는 진행에 따라 갱신되어야 하므로 write를 허용하되(스캔/이벤트마커와
+      // 달리 상태 필드가 계속 바뀐다), 본인 문서만 접근 가능하다.
+      match /v9Events/{eventId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        match /captures/{captureId} {
+          allow read, create: if request.auth != null && request.auth.uid == userId;
+          allow update, delete: if false; // 촬영 기록은 수정/삭제 불가 (데이터 무결성)
+        }
+
+        match /rechecks/{recheckId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        match /comparisons/{comparisonId} {
+          allow read, create: if request.auth != null && request.auth.uid == userId;
+          allow update, delete: if false;
+        }
+      }
     }
   }
 }

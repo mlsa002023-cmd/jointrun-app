@@ -4,6 +4,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { computeEventComparison } from "../lib/eventComparison";
 import { formatTimelineDate } from "../lib/mergeTimeline";
 import { trackKpiEvent } from "../lib/analytics";
+import { FEATURE_FLAGS } from "../config/featureFlags";
 
 // Decision Log 드릴다운 — 이벤트 전후 N주 Finger Score를 비교하는 미니 그래프(작업지시서 §6.1).
 // 관찰된 평균만 서술한다 — 원인 진단이나 행동 권고 문구는 넣지 않는다(§5.2 카피 가이드라인 공유).
@@ -38,6 +39,14 @@ function EventDetailModal({ event, scans, uid, onClose }) {
             <p className="text-xs font-bold text-amber-700">비교할 측정 기록이 더 필요합니다</p>
             <p className="text-[10px] text-amber-600 mt-1 leading-relaxed">
               이 기록 전후 {windowWeeks}주 이내에 스캔 기록이 더 있으면 변화를 비교해서 보여드려요.
+            </p>
+          </div>
+        ) : !FEATURE_FLAGS.legacyScoreExperiment ? (
+          // V9 정렬(JR-WEB-202) — 절대 점수 기반 전후 비교는 숨긴다. 기준선 대비 비교 화면
+          // (ComparisonScreen, 04_APP_PRD_V9.md S09)이 Decision Log와 연결되면 이 자리를 대체한다.
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              이 기록 전후 비교는 기준선 기반 비교 화면으로 통합될 예정입니다.
             </p>
           </div>
         ) : (

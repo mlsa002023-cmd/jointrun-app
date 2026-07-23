@@ -1,4 +1,5 @@
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
+import { FEATURE_FLAGS } from "../../config/featureFlags";
 import PatternInsightCard from "../PatternInsightCard";
 import JTCard from "../ui/JTCard";
 import { useReportData } from "../../hooks/useReportData";
@@ -27,26 +28,31 @@ function ReportModule({ currentProfile }) {
         <h2 className="text-sm font-bold text-slate-900">내 손의 디지털 바이오마커</h2>
       </div>
       <PatternInsightCard scans={scans} />
-      <div className="space-y-2">
-        {biomarkers.map(b => (
-          <JTCard key={b.name} className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-slate-900">{b.tradeName}</p>
-              <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
-            </div>
-            <div className="text-right shrink-0">
-              {b.value == null ? (
-                <span className="text-[9px] font-bold text-slate-400 px-2 py-1 rounded-full border border-slate-200 bg-slate-50">측정 전</span>
-              ) : (
-                <>
-                  <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
-                </>
-              )}
-            </div>
-          </JTCard>
-        ))}
-      </div>
+      {/* V9 정렬(JR-WEB-202/08_QA_ACCEPTANCE_GATE.md Gate B) — 절대 점수(Finger Score/Pain
+          Trend) 카드는 legacyScoreExperiment 플래그 뒤로 숨긴다. 계산 로직·데이터는 그대로
+          유지되며, 플래그를 true로 되돌리면 즉시 복원된다(가역성). */}
+      {FEATURE_FLAGS.legacyScoreExperiment && (
+        <div className="space-y-2">
+          {biomarkers.map(b => (
+            <JTCard key={b.name} className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold text-slate-900">{b.tradeName}</p>
+                <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
+              </div>
+              <div className="text-right shrink-0">
+                {b.value == null ? (
+                  <span className="text-[9px] font-bold text-slate-400 px-2 py-1 rounded-full border border-slate-200 bg-slate-50">측정 전</span>
+                ) : (
+                  <>
+                    <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
+                  </>
+                )}
+              </div>
+            </JTCard>
+          ))}
+        </div>
+      )}
 
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
         <p className="text-[9px] text-slate-400 uppercase font-mono">This Month</p>
@@ -57,7 +63,7 @@ function ReportModule({ currentProfile }) {
       ) : (
         <>
           <MonthlySummaryCard summary={monthly.summary} />
-          <MonthlyTrendChart trend={monthly.trend} />
+          {FEATURE_FLAGS.legacyScoreExperiment && <MonthlyTrendChart trend={monthly.trend} />}
           <MonthlyEventSummary eventGroups={monthly.eventGroups} />
           <MonthlyHighlightCard highlight={monthly.highlight} />
         </>

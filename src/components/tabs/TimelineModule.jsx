@@ -7,6 +7,7 @@ import {
 import { formatTimelineDate } from "../../lib/mergeTimeline";
 import { getTimelineIcon } from "../../lib/eventIcons";
 import { useTimelineData } from "../../hooks/useTimelineData";
+import { FEATURE_FLAGS } from "../../config/featureFlags";
 import EventDetailModal from "../EventDetailModal";
 import JTButton from "../ui/JTButton";
 import JTSection from "../ui/JTSection";
@@ -61,7 +62,7 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
                   className={`w-full flex items-center gap-2 text-[11px] text-slate-700 py-1.5 ${isEvent ? "text-left hover:bg-slate-50 rounded-lg -mx-1 px-1" : ""}`}>
                   <span className="text-slate-400 shrink-0 w-14">{formatTimelineDate(item.date)}</span>
                   <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
-                  <span className="truncate">{item.label}{item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                  <span className="truncate">{item.label}{FEATURE_FLAGS.legacyScoreExperiment && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
                 </Row>
               );
             })}
@@ -100,30 +101,34 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-            <p className="text-[10px] font-bold text-blue-700 mb-2">실제 스캔 기록 — Finger Score™ 추이</p>
-            <div className="h-36 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="week" tick={{fontSize:8}} />
-                  <YAxis tick={{fontSize:8}} domain={[0,100]} />
-                  <ChartTooltip contentStyle={{fontSize:"10px"}} />
-                  <Bar dataKey="rom" name="Finger Score" radius={[4,4,0,0]}>
-                    {chartData.map((_, i) => <Cell key={i} fill={i === chartData.length - 1 ? "#3b82f6" : "#bfdbfe"} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          {FEATURE_FLAGS.legacyScoreExperiment && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+              <p className="text-[10px] font-bold text-blue-700 mb-2">실제 스캔 기록 — Finger Score™ 추이</p>
+              <div className="h-36 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="week" tick={{fontSize:8}} />
+                    <YAxis tick={{fontSize:8}} domain={[0,100]} />
+                    <ChartTooltip contentStyle={{fontSize:"10px"}} />
+                    <Bar dataKey="rom" name="Finger Score" radius={[4,4,0,0]}>
+                      {chartData.map((_, i) => <Cell key={i} fill={i === chartData.length - 1 ? "#3b82f6" : "#bfdbfe"} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
 
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
-        <p className="text-[10px] font-bold text-blue-800 mb-2">
-          주간 회복 변화: <span className="text-blue-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
-        </p>
-      </div>
+      {FEATURE_FLAGS.legacyScoreExperiment && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
+          <p className="text-[10px] font-bold text-blue-800 mb-2">
+            주간 회복 변화: <span className="text-blue-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

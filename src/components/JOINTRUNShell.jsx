@@ -13,6 +13,8 @@ import {
 } from "../lib/firestore";
 import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
+import { useV9Agenda } from "../hooks/useV9Agenda";
+import DecisionLoopFlow from "./v9/DecisionLoopFlow";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -77,6 +79,9 @@ const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: 
 // scanCount는 SCAN 탭(홈이 마운트되어 있지 않을 수 있는 시점)의 KPI 판정에도 쓰이므로,
 // 이 훅을 최상위(JOINTRUNShell)에서 호출해 탭 전환과 무관하게 유지한다.
 const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = useHomeData();
+// V9 Decision Loop(트리거→기준선→재확인→비교) 진행 상태 — 04_APP_PRD_V9.md S07 홈 상단 카드.
+const { activeEvent, agenda, refresh: refreshAgenda } = useV9Agenda();
+const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "baseline"|"recheck", recheck? } | null
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -318,7 +323,28 @@ useEffect(() => {
 
             {/* App content */}
               {activeTab === "home" && (
-                scanCount === null ? (
+                <>
+                {agenda && (
+                  <div style={{background:"white",border:"1px solid #bfdbfe",borderRadius:14,padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <div>
+                      <div style={{fontSize:10,color:"#1d4ed8",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
+                      <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{agenda.label}</div>
+                    </div>
+                    {agenda.key === "no_baseline" && (
+                      <button onClick={() => setDecisionLoop({ mode: "baseline" })}
+                        style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                        첫 기준선 만들기
+                      </button>
+                    )}
+                    {agenda.key === "recheck_ready" && (
+                      <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                        style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                        지금 재확인하기
+                      </button>
+                    )}
+                  </div>
+                )}
+                {scanCount === null ? (
                   <HomeSkeleton />
                 ) : scanCount === 0 ? (
                   <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
@@ -349,7 +375,8 @@ useEffect(() => {
                     <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
                   )}
                 </div>
-                )
+                )}
+                </>
               )}
               {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
@@ -418,6 +445,17 @@ useEffect(() => {
           onClose={() => setShowEventMarker(false)}
           onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}
+        />
+      )}
+
+      {/* V9 DECISION LOOP (트리거→기준선 또는 재확인→비교) */}
+      {decisionLoop && currentUser && (
+        <DecisionLoopFlow
+          mode={decisionLoop.mode}
+          event={activeEvent}
+          recheck={decisionLoop.recheck}
+          onClose={() => setDecisionLoop(null)}
+          onCompleted={() => { refreshAgenda(); triggerFeedback("기록이 저장되었습니다."); }}
         />
       )}
 

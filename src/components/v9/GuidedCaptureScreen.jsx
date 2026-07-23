@@ -1,0 +1,201 @@
+// ─────────────────────────────────────────────
+// GuidedCaptureScreen — 04_APP_PRD_V9.md S04 "실시간 가이드 촬영"
+//
+// 기존 MotionScanPage(3포즈 ROM 측정·Finger Score 계산)와는 목적이 다르다: 여기는 "비교 가능한
+// 조건으로 한 장을 남기는 것"만 한다 — 점수·건강판정 로직이 전혀 없다. 그래서 별도 컴포넌트로
+// 분리했다(기존 스캔 엔진을 건드리지 않아 회귀 위험이 없다).
+//
+// 원본 영상/이미지는 저장하지 않는다 — 손 랜드마크 좌표만 실시간으로 품질 판정에 쓰고 버린다.
+// ─────────────────────────────────────────────
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera as CameraIcon, Check } from "lucide-react";
+import CameraView from "../CameraView";
+import { initHandTracker, detectHands, disposeHandTracker } from "../../lib/handTracker";
+import { checkDistance, checkFraming, checkShake, checkLighting, evaluateCaptureQuality, sampleFrameBrightness } from "../../lib/captureQuality";
+
+const HOLD_MS = 900;
+const SHAKE_BUFFER_SIZE = 8;
+const BRIGHTNESS_SAMPLE_INTERVAL_MS = 600;
+const MAX_ATTEMPTS_BEFORE_OVERRIDE = 4;
+
+export default function GuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
+  const cameraRef = useRef(null);
+  const rafRef = useRef(null);
+  const lastVideoTimeRef = useRef(-1);
+  const landmarkBufferRef = useRef([]);
+  const holdStartRef = useRef(null);
+  const confirmedRef = useRef(false);
+  const attemptsRef = useRef(0);
+  const lastBrightnessRef = useRef(null);
+  const lastBrightnessAtRef = useRef(0);
+
+  const [phase, setPhase] = useState("camera_starting"); // camera_starting | ai_loading | guiding | camera_error | ai_error
+  const [handDetected, setHandDetected] = useState(false);
+  const [quality, setQuality] = useState({ status: "retry", flags: [], message: "카메라 앞에 손을 비춰주세요." });
+  const [progress, setProgress] = useState(0);
+  const [attempts, setAttempts] = useState(0);
+  const [justCaptured, setJustCaptured] = useState(false);
+
+  const stopLoop = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }, []);
+
+  useEffect(() => () => { stopLoop(); disposeHandTracker(); }, [stopLoop]);
+
+  const finishCapture = useCallback((finalQuality) => {
+    if (confirmedRef.current) return;
+    confirmedRef.current = true;
+    setJustCaptured(true);
+    stopLoop();
+    setTimeout(() => {
+      onCaptured({ qualityStatus: finalQuality.status, qualityFlags: finalQuality.flags });
+    }, 500);
+  }, [onCaptured, stopLoop]);
+
+  const detectLoop = useCallback(() => {
+    const video = cameraRef.current?.getVideo();
+    if (!video) { rafRef.current = requestAnimationFrame(detectLoop); return; }
+
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
+      lastVideoTimeRef.current = video.currentTime;
+      const result = detectHands(video, performance.now());
+
+      if (result?.landmarks?.length > 0) {
+        setHandDetected(true);
+        const landmarks = result.landmarks[0];
+        landmarkBufferRef.current = [...landmarkBufferRef.current, landmarks].slice(-SHAKE_BUFFER_SIZE);
+
+        const now = performance.now();
+        if (now - lastBrightnessAtRef.current > BRIGHTNESS_SAMPLE_INTERVAL_MS) {
+          lastBrightnessAtRef.current = now;
+          lastBrightnessRef.current = sampleFrameBrightness(video);
+        }
+
+        const evalResult = evaluateCaptureQuality({
+          distance: checkDistance(landmarks),
+          framing: checkFraming(landmarks),
+          shake: checkShake(landmarkBufferRef.current),
+          lighting: checkLighting(lastBrightnessRef.current),
+        });
+        setQuality(evalResult);
+
+        if (evalResult.status === "pass" && !confirmedRef.current) {
+          if (holdStartRef.current == null) holdStartRef.current = now;
+          const elapsed = now - holdStartRef.current;
+          setProgress(Math.min(1, elapsed / HOLD_MS));
+          if (elapsed >= HOLD_MS) finishCapture(evalResult);
+        } else {
+          if (holdStartRef.current != null) {
+            attemptsRef.current += 1;
+            setAttempts(attemptsRef.current);
+          }
+          holdStartRef.current = null;
+          setProgress(0);
+        }
+      } else {
+        setHandDetected(false);
+        setQuality({ status: "retry", flags: ["no_hand"], message: "손이 보이지 않아요. 카메라 앞에 손을 비춰주세요." });
+        holdStartRef.current = null;
+        setProgress(0);
+      }
+    }
+    rafRef.current = requestAnimationFrame(detectLoop);
+  }, [finishCapture]);
+
+  const handleCameraReady = useCallback(async () => {
+    setPhase("ai_loading");
+    try {
+      await initHandTracker();
+    } catch (err) {
+      console.error("[GuidedCaptureScreen] HandTracker 초기화 실패:", err);
+      setPhase("ai_error");
+      return;
+    }
+    setPhase("guiding");
+    rafRef.current = requestAnimationFrame(detectLoop);
+  }, [detectLoop]);
+
+  const handleCameraError = useCallback(() => setPhase("camera_error"), []);
+
+  const forceCapture = () => {
+    finishCapture({ status: quality.status === "retry" ? "unreliable" : quality.status, flags: quality.flags });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+        <CameraView ref={cameraRef} active onReady={handleCameraReady} onError={handleCameraError} />
+
+        {phase === "guiding" && (
+          <>
+            <div style={{ position: "absolute", inset: 16, border: "1px dashed rgba(96,165,250,0.4)", borderRadius: 16, pointerEvents: "none" }} />
+
+            <div style={{ position: "absolute", top: 12, left: 12, right: 12, zIndex: 20, display: "flex", justifyContent: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 999, background: handDetected ? "rgba(37,99,235,0.9)" : "rgba(30,41,59,0.85)", color: "#fff" }}>
+                {handSide === "left" ? "왼손" : "오른손"} 촬영 중
+              </span>
+            </div>
+
+            <div style={{ position: "absolute", left: 16, right: 16, bottom: 96, zIndex: 20 }}>
+              <div style={{ background: "rgba(15,23,42,0.88)", borderRadius: 16, padding: 16, textAlign: "center" }}>
+                {justCaptured ? (
+                  <p style={{ color: "#93c5fd", fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Check size={18} /> 촬영 완료
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ color: "#fff", fontWeight: 700, fontSize: 14, lineHeight: 1.5 }}>
+                      {quality.status === "pass" ? "좋아요! 이 상태를 유지해주세요." : quality.message}
+                    </p>
+                    <div style={{ marginTop: 12, height: 6, borderRadius: 999, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${progress * 100}%`, background: "#60a5fa", transition: "width 100ms linear" }} />
+                    </div>
+                    {attempts >= MAX_ATTEMPTS_BEFORE_OVERRIDE && (
+                      <button
+                        type="button"
+                        onClick={forceCapture}
+                        style={{ marginTop: 14, minHeight: 44, width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.35)", color: "#fff", borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+                      >
+                        조건이 계속 안 맞으면 그대로 저장하기
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {phase === "ai_loading" && (
+          <div style={{ position: "absolute", top: 12, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 20 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#93c5fd", background: "rgba(15,23,42,0.85)", padding: "6px 14px", borderRadius: 999 }}>
+              AI 모델 로딩중
+            </span>
+          </div>
+        )}
+
+        {(phase === "camera_error" || phase === "ai_error") && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,6,23,0.95)", padding: 24 }}>
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 16, padding: 20, textAlign: "center", maxWidth: 280 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>
+                {phase === "camera_error" ? "카메라에 접근할 수 없습니다" : "지금은 촬영할 수 없습니다"}
+              </p>
+              <p style={{ fontSize: 12, color: "#a16207", marginTop: 8 }}>잠시 후 다시 시도해주세요.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: 12, background: "#000" }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{ width: "100%", minHeight: 44, background: "rgba(255,255,255,0.08)", color: "#e2e8f0", border: "none", borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+        >
+          <CameraIcon size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />촬영 취소
+        </button>
+      </div>
+    </div>
+  );
+}

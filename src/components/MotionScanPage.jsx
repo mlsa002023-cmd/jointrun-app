@@ -18,6 +18,7 @@ import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
+import { FEATURE_FLAGS } from "../config/featureFlags";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -406,14 +407,16 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       setHistory((prev) => [entry, ...prev].slice(0, 14));
 
       setScanResult(result);
-      triggerFeedback(`스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`);
+      triggerFeedback(FEATURE_FLAGS.legacyScoreExperiment
+        ? `스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`
+        : `스캔 완료! ROM: ${avgRom}°`);
 
       // 부모(JOINTRUNShell)에는 raw/metrics/scanScores로 분리된 신규 스키마를 전달한다.
       onScanCompleted({
         metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
         scanScores: { mobility, stability },
         raw: rawFrames,
-        recommendation: buildRecommendation(mobility.value, avgRom),
+        recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment }),
       });
 
       stopDetectLoop();
@@ -453,7 +456,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
       scanScores: { mobility, stability },
       raw: null,
-      recommendation: buildRecommendation(mobility.value, 122),
+      recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment }),
       isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
     });
   };
@@ -685,7 +688,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 </div>
               </div>
               <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
-                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg)}
+                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment })}
               </div>
             </div>
             {history.length > 0 && (

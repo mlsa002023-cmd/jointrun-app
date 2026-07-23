@@ -1,15 +1,20 @@
 // Anthropic AI Coach API 호출 서비스
 // (JOINTRUN_UNIFIED.jsx에서 분리됨)
+import { FEATURE_FLAGS } from "../config/featureFlags";
 
 async function callAnthropicCoach(messages, profile) {
+  // V9 정렬(JR-WEB-202) — 절대 점수(Finger Score)는 legacyScoreExperiment가 꺼져 있으면
+  // AI 컨텍스트에도 주입하지 않는다(모델이 응답에서 그대로 언급하는 것을 막기 위함).
+  const scoreLine = FEATURE_FLAGS.legacyScoreExperiment
+    ? `- Finger Score™: ${profile.fingerHealthScore != null ? `${profile.fingerHealthScore}/100점` : "아직 측정 전"}\n`
+    : "";
   const systemPrompt = `당신은 JOINTRUN의 기록 도우미입니다. 사용자가 손가락·손목 상태를 기록하고 스스로 돌아볼 수 있도록 돕습니다.
 
 현재 회원 정보:
 - 이름: ${profile.name} (${profile.age}세, ${profile.gender})
 - 직업: ${profile.job}
 - 최근 기록한 상태: ${profile.symptoms}
-- Finger Score™: ${profile.fingerHealthScore != null ? `${profile.fingerHealthScore}/100점` : "아직 측정 전"}
-- 아침 강직: ${profile.morningStiffness}
+${scoreLine}- 아침 강직: ${profile.morningStiffness}
 - 통증 VAS: ${profile.painIndex}/10
 
 응답 규칙:
