@@ -34,6 +34,18 @@ function fmtDate(date) {
 }
 const HAND_LABEL = { left: "왼손", right: "오른손" };
 
+const SYMPTOM_VALUE_LABEL = {
+  swellingSelfReport: { none: "없음", mild: "조금", high: "많음", unknown: "모르겠음" },
+  warmthSelfReport: { none: "없음", present: "있음", unknown: "모르겠음" },
+  functionDifficulty: { none: "없음", mild: "가벼움", moderate: "보통", high: "큼" },
+};
+
+function formatSymptomValue(key, value) {
+  if (value == null) return "—";
+  const map = SYMPTOM_VALUE_LABEL[key];
+  return map ? (map[value] ?? value) : value;
+}
+
 export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed }) {
   const [change, setChange] = useState(null);
   const { comparable, reasons } = evaluateComparability(baselineCapture, currentCapture);
@@ -87,10 +99,10 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
           <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.label}</span>
             <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>
-              {baselineCapture?.symptomSnapshot?.[row.key] ?? "—"}
+              {formatSymptomValue(row.key, baselineCapture?.symptomSnapshot?.[row.key])}
             </span>
             <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>
-              {currentCapture?.symptomSnapshot?.[row.key] ?? "—"}
+              {formatSymptomValue(row.key, currentCapture?.symptomSnapshot?.[row.key])}
             </span>
           </div>
         ))}

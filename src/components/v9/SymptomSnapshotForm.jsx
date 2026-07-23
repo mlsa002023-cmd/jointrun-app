@@ -13,7 +13,7 @@ function ScaleRow({ label, value, onChange }) {
             key={n}
             onClick={() => onChange(n)}
             style={{
-              minHeight: 32, borderRadius: 8, fontSize: 11, fontWeight: 700,
+              minHeight: 48, borderRadius: 8, fontSize: 11, fontWeight: 700,
               border: value === n ? "2px solid #122A5C" : "1px solid #e2e8f0",
               background: value === n ? "#122A5C" : "white",
               color: value === n ? "white" : "#64748b",
@@ -40,7 +40,7 @@ function SegmentRow({ label, options, value, onChange }) {
             key={opt.value}
             onClick={() => onChange(opt.value)}
             style={{
-              minHeight: 40, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              minHeight: 48, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
               border: value === opt.value ? "2px solid #122A5C" : "1px solid #e2e8f0",
               background: value === opt.value ? "#EEF1F8" : "white",
               color: value === opt.value ? "#122A5C" : "#64748b",

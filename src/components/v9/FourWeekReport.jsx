@@ -22,6 +22,18 @@ function fmt(date) {
   return new Date(date).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
 }
 
+const SYMPTOM_VALUE_LABEL = {
+  swellingSelfReport: { none: "없음", mild: "조금", high: "많음", unknown: "모르겠음" },
+  warmthSelfReport: { none: "없음", present: "있음", unknown: "모르겠음" },
+  functionDifficulty: { none: "없음", mild: "가벼움", moderate: "보통", high: "큼" },
+};
+
+function formatSymptomValue(key, value) {
+  if (value == null) return "—";
+  const map = SYMPTOM_VALUE_LABEL[key];
+  return map ? (map[value] ?? value) : value;
+}
+
 export default function FourWeekReport({ onClose }) {
   const { currentUser } = useAuth();
   const repository = useV9Repository();
@@ -108,8 +120,8 @@ export default function FourWeekReport({ onClose }) {
           {SYMPTOM_ROWS.map((row) => (
             <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "8px 0", borderTop: "1px solid #F1F3F7" }}>
               <span style={{ fontSize: 13, color: "#16213D" }}>{row.label}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, textAlign: "center" }}>{baseline?.symptomSnapshot?.[row.key] ?? "—"}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, textAlign: "center" }}>{latestSymptom?.[row.key] ?? "—"}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, textAlign: "center" }}>{formatSymptomValue(row.key, baseline?.symptomSnapshot?.[row.key])}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, textAlign: "center" }}>{formatSymptomValue(row.key, latestSymptom?.[row.key])}</span>
             </div>
           ))}
         </section>
