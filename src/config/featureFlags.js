@@ -30,12 +30,57 @@ export const FEATURE_FLAGS = {
 };
 
 // ─────────────────────────────────────────────
-// Mock Capture — 카메라/실기기 없이 트리거→기준선→재확인→비교 전체 흐름을 개발·QA 환경에서
-// E2E로 검증하기 위한 개발 전용 우회 경로. 이중 차단:
-//   1) import.meta.env.DEV — Vite가 production 빌드에서는 이 값을 항상 false로 정적 치환한다.
-//      번들에 이 분기 자체가 아예 죽은 코드로 남거나(트리셰이킹) 최소한 절대 true가 될 수 없다.
-//   2) VITE_ENABLE_MOCK_CAPTURE — 로컬 개발 서버(`npm run dev`)를 그냥 켰다고 자동으로
-//      뜨지 않도록, 명시적으로 .env.local에 설정해야만 켜지는 2차 게이트.
-// 두 조건 모두 만족해야 하므로 production에는 어떤 경로로도 노출되지 않는다.
+// QA 모드 — 대표 검수용 Vercel Preview 배포에서만 Mock Capture/시점 이동/오류 시뮬레이션/
+// 기록 초기화 같은 QA 전용 도구를 노출하기 위한 플래그.
+//
+// VITE_QA_MODE_ENABLED는 Vercel 프로젝트의 "Preview" 환경 변수로만 설정한다("Production"
+// 환경 변수에는 절대 설정하지 않는다 — Vercel은 Production/Preview/Development 환경별로
+// 서로 다른 값을 지정할 수 있다). 이 값을 Production 환경 변수에 설정하지 않는 것이
+// production에서 QA 도구가 노출되지 않게 하는 유일하고 절대적인 안전장치다.
 // ─────────────────────────────────────────────
-export const MOCK_CAPTURE_ENABLED = import.meta.env.DEV === true && readBooleanEnv("VITE_ENABLE_MOCK_CAPTURE", false);
+const RAW_QA_MODE_ENABLED = readBooleanEnv("VITE_QA_MODE_ENABLED", false);
+
+// QA 계정 allowlist — "지정된 검수 계정에서만" 요건에 대한 2차 방어선.
+// VITE_QA_ALLOWED_EMAILS를 콤마로 구분해 설정하면, QA_MODE 플래그가 켜져 있어도
+// 목록에 없는 이메일로 로그인한 사용자에게는 QA 도구가 보이지 않는다.
+// 비워두면(설정 안 하면) 플래그만으로 판단한다(허용 목록 없음).
+const QA_ALLOWED_EMAILS = (import.meta.env?.VITE_QA_ALLOWED_EMAILS || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export const FEATURE_FLAGS_QA = {
+  qaModeEnabled: RAW_QA_MODE_ENABLED,
+};
+
+// 현재 로그인한 사용자에게 QA 도구를 보여줘도 되는지 판단한다.
+// user는 AuthContext의 currentUser(파이어베이스 User 객체 또는 데모 사용자)를 그대로 전달한다.
+export function isQaModeActiveForUser(user) {
+  if (!RAW_QA_MODE_ENABLED) return false;
+  if (QA_ALLOWED_EMAILS.length === 0) return true;
+  const email = user?.email?.toLowerCase();
+  return Boolean(email && QA_ALLOWED_EMAILS.includes(email));
+}
+
+// ─────────────────────────────────────────────
+// Mock Capture — 카메라/실기기 없이 트리거→기준선→재확인→비교 전체 흐름을 개발·QA 환경에서
+// E2E로 검증하기 위한 개발 전용 우회 경로. 두 가지 경로 중 하나로만 켜진다:
+//   1) 로컬 개발: import.meta.env.DEV === true AND VITE_ENABLE_MOCK_CAPTURE=true(.env.local).
+//      Vite가 production/preview 빌드에서는 DEV를 항상 false로 정적 치환하므로 이 경로는
+//      `npm run dev`로 실행 중인 로컬 머신에서만 성립할 수 있다.
+//   2) Preview 배포: VITE_QA_MODE_ENABLED=true(Vercel Preview 환경 변수). Production 환경
+//      변수에는 이 값을 설정하지 않으므로 production 빌드에서는 이 경로도 항상 false다.
+// 화면에 실제로 노출할지는 shouldShowQaTools()로 한 번 더 계정 allowlist를 확인한다.
+// ─────────────────────────────────────────────
+export const MOCK_CAPTURE_ENABLED =
+  (import.meta.env.DEV === true && readBooleanEnv("VITE_ENABLE_MOCK_CAPTURE", false)) ||
+  RAW_QA_MODE_ENABLED;
+
+// 실제 화면에 QA 도구(Mock Capture 버튼, 시점 이동, 오류 시뮬레이션, 기록 초기화)를
+// 렌더링해도 되는지의 최종 판단. 로컬 개발(DEV)에서는 계정 구분 없이 기존처럼 동작하고,
+// 빌드된 배포본(Preview)에서는 로그인한 계정이 allowlist를 통과해야만 true가 된다.
+export function shouldShowQaTools(user) {
+  if (!MOCK_CAPTURE_ENABLED) return false;
+  if (import.meta.env.DEV === true) return true;
+  return isQaModeActiveForUser(user);
+}

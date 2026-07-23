@@ -15,7 +15,7 @@ import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
 import { useV9Agenda } from "../hooks/useV9Agenda";
 import { useV9Repository } from "../hooks/useV9Repository";
-import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
+import { shouldShowQaTools } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
 import EventMarkerModal from "./EventMarkerModal";
 import {
@@ -85,6 +85,8 @@ const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = us
 const { activeEvent, agenda, refresh: refreshAgenda } = useV9Agenda();
 const v9Repository = useV9Repository();
 const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "baseline"|"recheck", recheck? } | null
+const [qaSimulateNetworkError, setQaSimulateNetworkError] = useState(false);
+const [qaResetting, setQaResetting] = useState(false);
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -358,18 +360,46 @@ useEffect(() => {
                         {agenda.qualityWarning}
                       </div>
                     )}
-                    {/* MOCK_CAPTURE_ENABLED가 꺼져 있으면(production 항상 꺼짐) 렌더링되지 않는다.
-                        2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 개발용 버튼. */}
-                    {MOCK_CAPTURE_ENABLED && (agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && agenda.recheck && (
+                    {/* shouldShowQaTools()가 false면(production 항상 false) 아무것도 렌더링되지 않는다.
+                        2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 QA 전용 버튼. */}
+                    {shouldShowQaTools(currentUser) && (agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && agenda.recheck && (
                       <button
                         onClick={async () => {
                           await v9Repository.debugForceRecheckDue(activeEvent.id, agenda.recheck.dueType);
                           refreshAgenda();
                         }}
                         style={{marginTop:10,width:"100%",minHeight:36,background:"rgba(250,204,21,0.12)",border:"1px solid rgba(202,138,4,0.4)",color:"#854d0e",borderRadius:8,fontSize:11,fontWeight:700}}>
-                        MOCK: 재확인 날짜를 오늘로 당기기 (개발용)
+                        MOCK: 재확인 날짜를 오늘로 당기기 (QA 전용)
                       </button>
                     )}
+                  </div>
+                )}
+                {/* QA 모드 패널 — 대표 검수용 Preview에서만 노출된다(shouldShowQaTools). 일반 사용자
+                    경로에는 이 블록 자체가 절대 렌더링되지 않는다. */}
+                {shouldShowQaTools(currentUser) && (
+                  <div style={{background:"rgba(250,204,21,0.08)",border:"1px solid rgba(202,138,4,0.35)",borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+                    <div style={{fontSize:10,color:"#854d0e",fontWeight:800,letterSpacing:0.5,marginBottom:8}}>QA 모드 — 검수 전용 도구</div>
+                    <button
+                      onClick={() => setQaSimulateNetworkError((v) => !v)}
+                      style={{width:"100%",minHeight:40,background:qaSimulateNetworkError ? "#B3462E" : "white",color:qaSimulateNetworkError ? "white" : "#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700,marginBottom:8}}>
+                      네트워크 오류 시뮬레이션: {qaSimulateNetworkError ? "켜짐 (다음 저장이 강제로 실패합니다)" : "꺼짐"}
+                    </button>
+                    <button
+                      disabled={qaResetting}
+                      onClick={async () => {
+                        if (!window.confirm("현재 계정의 판단 루프 테스트 기록을 전부 초기화할까요? 되돌릴 수 없습니다.")) return;
+                        setQaResetting(true);
+                        try {
+                          await v9Repository.resetTestData();
+                          setDecisionLoop(null);
+                          await refreshAgenda();
+                        } finally {
+                          setQaResetting(false);
+                        }
+                      }}
+                      style={{width:"100%",minHeight:40,background:"white",color:"#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700}}>
+                      {qaResetting ? "초기화 중..." : "테스트 기록 초기화"}
+                    </button>
                   </div>
                 )}
                 {scanCount === null ? (
@@ -484,6 +514,7 @@ useEffect(() => {
           recheck={decisionLoop.recheck}
           onClose={() => setDecisionLoop(null)}
           onCompleted={() => { refreshAgenda(); triggerFeedback("기록이 저장되었습니다."); }}
+          simulateNetworkError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
         />
       )}
 

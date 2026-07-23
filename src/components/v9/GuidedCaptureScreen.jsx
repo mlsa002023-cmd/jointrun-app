@@ -12,7 +12,8 @@ import { Camera as CameraIcon, Check } from "lucide-react";
 import CameraView from "../CameraView";
 import { initHandTracker, detectHands, disposeHandTracker } from "../../lib/handTracker";
 import { checkDistance, checkFraming, checkShake, checkLighting, evaluateCaptureQuality, sampleFrameBrightness } from "../../lib/captureQuality";
-import { MOCK_CAPTURE_ENABLED } from "../../config/featureFlags";
+import { shouldShowQaTools } from "../../config/featureFlags";
+import { useAuth } from "../../contexts/AuthContext";
 
 const HOLD_MS = 900;
 const SHAKE_BUFFER_SIZE = 8;
@@ -20,13 +21,14 @@ const BRIGHTNESS_SAMPLE_INTERVAL_MS = 600;
 const MAX_ATTEMPTS_BEFORE_OVERRIDE = 4;
 
 // ─────────────────────────────────────────────
-// Mock Capture — 카메라 하드웨어 없이 트리거→기준선→재확인→비교 전체 흐름을 개발 환경에서
-// E2E로 검증하기 위한 화면. MOCK_CAPTURE_ENABLED(featureFlags.js)가 이중으로 차단하므로
-// 이 컴포넌트 자체는 production 빌드에서도 번들에는 남아있을 수 있지만 절대 렌더링되지
-// 않는다 — 방어를 한 겹 더 두기 위해 여기서도 한 번 더 체크한다(방어적 이중 가드).
+// Mock Capture — 카메라 하드웨어 없이 트리거→기준선→재확인→비교 전체 흐름을 개발·QA 환경에서
+// E2E로 검증하기 위한 화면. shouldShowQaTools(currentUser)(featureFlags.js)가 이중으로
+// 차단하므로 이 컴포넌트 자체는 production 빌드에서도 번들에는 남아있을 수 있지만 절대
+// 렌더링되지 않는다 — 방어를 한 겹 더 두기 위해 여기서도 한 번 더 체크한다(방어적 이중 가드).
 // ─────────────────────────────────────────────
 function MockCaptureScreen({ handSide, onCaptured, onCancel }) {
-  if (!MOCK_CAPTURE_ENABLED) return null; // 이중 가드 — 이 지점까지 왔어도 플래그가 꺼져 있으면 아무것도 렌더링하지 않는다.
+  const { currentUser } = useAuth();
+  if (!shouldShowQaTools(currentUser)) return null; // 이중 가드 — 이 지점까지 왔어도 플래그/계정이 안 맞으면 아무것도 렌더링하지 않는다.
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#0f172a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: "#facc15", background: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.4)", borderRadius: 999, padding: "6px 14px", marginBottom: 20 }}>
@@ -63,7 +65,8 @@ function MockCaptureScreen({ handSide, onCaptured, onCancel }) {
 }
 
 export default function GuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
-  if (MOCK_CAPTURE_ENABLED) {
+  const { currentUser } = useAuth();
+  if (shouldShowQaTools(currentUser)) {
     return <MockCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;
   }
   return <RealGuidedCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;

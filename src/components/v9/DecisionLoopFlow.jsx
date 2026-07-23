@@ -26,7 +26,7 @@ import ComparisonScreen from "./ComparisonScreen";
 import DecisionLogScreen from "./DecisionLogScreen";
 import OutcomeScreen from "./OutcomeScreen";
 
-export default function DecisionLoopFlow({ mode, event, recheck, onClose, onCompleted }) {
+export default function DecisionLoopFlow({ mode, event, recheck, onClose, onCompleted, simulateNetworkError }) {
   const { currentUser } = useAuth();
   const repository = useV9Repository();
   const uid = currentUser?.uid;
@@ -48,11 +48,17 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
   const track = (name, params) => trackKpiEvent(name, uid, params);
 
   // 저장이 필요한 단계 공통 래퍼 — 실패해도 화면을 넘기지 않고 에러 배너만 띄운다.
+  // simulateNetworkError는 QA 모드에서만 전달되는 디버그용 prop이다(대표 검수 시 실제로
+  // 네트워크를 끊지 않고도 오류 배너/재시도 흐름을 확인할 수 있게 함) — 일반 사용자 경로에는
+  // 이 prop 자체가 전달되지 않는다.
   const runStep = async (fn) => {
     if (submitting) return; // 중복 제출 방지
     setSubmitting(true);
     setError(null);
     try {
+      if (simulateNetworkError) {
+        throw new Error("QA_SIMULATED_NETWORK_ERROR — 저장 직전 강제 실패(디버그 시뮬레이션)");
+      }
       await fn();
     } catch (err) {
       console.error("[DecisionLoopFlow] 저장 실패:", err);

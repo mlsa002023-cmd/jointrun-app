@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { FEATURE_FLAGS, MOCK_CAPTURE_ENABLED } from "./featureFlags";
+import { FEATURE_FLAGS, MOCK_CAPTURE_ENABLED, shouldShowQaTools, isQaModeActiveForUser } from "./featureFlags";
 
 describe("FEATURE_FLAGS — production 기본값", () => {
   it("absoluteScoreUiEnabled는 환경변수를 설정하지 않으면 false다(테스트 환경 = 배포 환경과 동일 조건)", () => {
@@ -14,6 +14,11 @@ describe("FEATURE_FLAGS — production 기본값", () => {
 
   it("MOCK_CAPTURE_ENABLED는 별도 opt-in 없이는 false다(테스트 러너는 import.meta.env.DEV=true지만 VITE_ENABLE_MOCK_CAPTURE는 설정 안 함)", () => {
     expect(MOCK_CAPTURE_ENABLED).toBe(false);
+  });
+
+  it("VITE_QA_MODE_ENABLED를 설정하지 않으면 QA 도구는 어떤 계정에도 보이지 않는다", () => {
+    expect(isQaModeActiveForUser({ email: "ceo@jointrun.app" })).toBe(false);
+    expect(shouldShowQaTools({ email: "ceo@jointrun.app" })).toBe(false);
   });
 });
 

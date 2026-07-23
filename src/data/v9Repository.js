@@ -7,7 +7,7 @@ import {
   createV9Event, updateV9EventStatus, saveCapture, markBaselineCreated,
   completeRecheck, skipRecheck, saveComparison, getCapture,
   getActiveV9Event, getV9EventHistory, getV9EventHistoryDetailed, getEventDetail,
-  saveDecision, saveOutcome, __debugForceRecheckDue,
+  saveDecision, saveOutcome, __debugForceRecheckDue, resetV9DataForUser,
 } from "../lib/firestoreV9";
 
 export function createV9Repository(uid) {
@@ -86,6 +86,12 @@ export function createV9Repository(uid) {
     async debugForceRecheckDue(eventId, dueType) {
       if (!uid) return;
       return __debugForceRecheckDue(uid, eventId, dueType);
+    },
+
+    // QA 모드 전용 — 대표 검수용 "테스트 기록 초기화". RC1 UAT 대응.
+    async resetTestData() {
+      if (!uid) return;
+      return resetV9DataForUser(uid);
     },
   };
 }

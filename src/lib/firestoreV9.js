@@ -19,7 +19,7 @@
 
 import { FIREBASE_ENABLED, db } from "../firebase/config";
 import {
-  collection, addDoc, getDocs, getDoc, doc, updateDoc,
+  collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc,
   query, orderBy, limit, serverTimestamp,
 } from "firebase/firestore";
 import {
@@ -382,16 +382,43 @@ export async function getActiveV9Event(uid) {
 }
 
 /**
- * 개발용 디버그 전용 — 2주/4주 재확인 예정일을 "지금"으로 앞당긴다. MOCK_CAPTURE_ENABLED가
+ * 개발/QA 전용 디버그 — 2주/4주 재확인 예정일을 "지금"으로 앞당긴다. MOCK_CAPTURE_ENABLED가
  * 꺼져 있으면(production 빌드는 항상 꺼짐) 아무 것도 하지 않는다 — 실제 예정일 조작 경로가
- * production에 존재하지 않도록 이중으로 막는다. Mock Capture E2E 검증에서 2주/4주 뒤를
- * 기다리지 않고 재확인 화면까지 즉시 도달하기 위한 용도.
+ * production에 존재하지 않도록 이중으로 막는다. 로컬 개발의 데모 스토어뿐 아니라, 대표 검수용
+ * Preview에서 Staging Firebase에 연결된 경우(QA 모드)에도 동작해야 하므로 실제 Firestore
+ * 경로도 지원한다 — rechecks 서브컬렉션은 Rules상 본인 소유 문서의 update가 허용되어 있다.
  */
 export async function __debugForceRecheckDue(uid, eventId, dueType) {
-  if (!MOCK_CAPTURE_ENABLED || !USE_DEMO_STORE) return;
-  const event = getDemoEvents(uid).find((e) => e.id === eventId);
-  const recheck = event?.rechecks.find((r) => r.dueType === dueType);
-  if (recheck) recheck.dueAt = new Date();
+  if (!MOCK_CAPTURE_ENABLED) return;
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    const recheck = event?.rechecks.find((r) => r.dueType === dueType);
+    if (recheck) recheck.dueAt = new Date();
+    return;
+  }
+  const snap = await getDocs(rechecksCol(uid, eventId));
+  const target = snap.docs.find((d) => d.data().dueType === dueType);
+  if (target) {
+    await updateDoc(target.ref, { dueAt: serverTimestamp() });
+  }
+}
+
+/**
+ * 개발/QA 전용 디버그 — 현재 계정의 V9 Decision Loop 기록을 전부 초기화한다("테스트 기록
+ * 초기화"). MOCK_CAPTURE_ENABLED가 꺼져 있으면(production 빌드는 항상 꺼짐) 아무 것도
+ * 하지 않는다. 실제 Firestore(Staging)에서는 v9Events 문서 삭제만 수행한다(Rules상 본인
+ * 문서 delete가 허용됨) — captures/rechecks/comparisons/decisions/outcomes 서브컬렉션은
+ * 불변 기록 원칙(update/delete: if false)이라 클라이언트에서 지울 수 없으므로 그대로 남지만,
+ * 부모 이벤트 문서가 없으면 앱의 정상 조회 경로(이벤트 목록 조회)로는 다시 나타나지 않는다.
+ */
+export async function resetV9DataForUser(uid) {
+  if (!MOCK_CAPTURE_ENABLED || !uid) return;
+  if (USE_DEMO_STORE) {
+    demoEventsByUid.delete(uid);
+    return;
+  }
+  const snap = await getDocs(eventsCol(uid));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
 }
 
 export async function getV9EventHistory(uid, count = 20) {
