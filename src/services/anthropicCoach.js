@@ -3,9 +3,9 @@
 import { FEATURE_FLAGS } from "../config/featureFlags";
 
 async function callAnthropicCoach(messages, profile) {
-  // V9 정렬(JR-WEB-202) — 절대 점수(Finger Score)는 legacyScoreExperiment가 꺼져 있으면
+  // V9 정렬(JR-WEB-202) — 절대 점수(Finger Score)는 absoluteScoreUiEnabled가 꺼져 있으면
   // AI 컨텍스트에도 주입하지 않는다(모델이 응답에서 그대로 언급하는 것을 막기 위함).
-  const scoreLine = FEATURE_FLAGS.legacyScoreExperiment
+  const scoreLine = FEATURE_FLAGS.absoluteScoreUiEnabled
     ? `- Finger Score™: ${profile.fingerHealthScore != null ? `${profile.fingerHealthScore}/100점` : "아직 측정 전"}\n`
     : "";
   const systemPrompt = `당신은 JOINTRUN의 기록 도우미입니다. 사용자가 손가락·손목 상태를 기록하고 스스로 돌아볼 수 있도록 돕습니다.

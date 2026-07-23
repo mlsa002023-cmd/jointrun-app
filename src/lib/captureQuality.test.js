@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkDistance, checkFraming, checkShake, checkLighting,
-  evaluateCaptureQuality, evaluateComparability,
+  evaluateCaptureQuality, evaluateComparability, isReliableCapture,
 } from "./captureQuality";
 
 function makeHandLandmarks({ centerX = 0.5, centerY = 0.5, span = 0.4 } = {}) {
@@ -77,6 +77,19 @@ describe("evaluateCaptureQuality", () => {
   });
 });
 
+describe("isReliableCapture — 촬영 품질 예외 처리(4회 실패 후 강제저장)", () => {
+  it("qualityStatus가 pass면 신뢰 가능", () => {
+    expect(isReliableCapture({ qualityStatus: "pass" })).toBe(true);
+  });
+  it("qualityStatus가 unreliable(강제 저장)이면 신뢰 불가 — 정상 기준선/재확인으로 세지 않는다", () => {
+    expect(isReliableCapture({ qualityStatus: "unreliable" })).toBe(false);
+  });
+  it("캡처 자체가 없으면 신뢰 불가", () => {
+    expect(isReliableCapture(null)).toBe(false);
+    expect(isReliableCapture(undefined)).toBe(false);
+  });
+});
+
 describe("evaluateComparability — S09 과거의 나와 비교", () => {
   it("둘 다 있고 조건이 같으면 comparable", () => {
     const result = evaluateComparability(
@@ -95,5 +108,21 @@ describe("evaluateComparability — S09 과거의 나와 비교", () => {
   });
   it("캡처가 없으면 comparable하지 않다", () => {
     expect(evaluateComparability(null, null).comparable).toBe(false);
+  });
+  it("기준선이 강제저장(unreliable)이면 비교 신뢰도 경고 사유에 포함된다", () => {
+    const result = evaluateComparability(
+      { handSide: "right", qualityStatus: "unreliable" },
+      { handSide: "right", qualityStatus: "pass" },
+    );
+    expect(result.comparable).toBe(false);
+    expect(result.reasons).toContain("baseline_quality_unreliable");
+  });
+  it("현재 캡처가 강제저장(unreliable)이면 비교 신뢰도 경고 사유에 포함된다", () => {
+    const result = evaluateComparability(
+      { handSide: "right", qualityStatus: "pass" },
+      { handSide: "right", qualityStatus: "unreliable" },
+    );
+    expect(result.comparable).toBe(false);
+    expect(result.reasons).toContain("current_quality_unreliable");
   });
 });

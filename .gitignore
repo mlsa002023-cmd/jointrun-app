@@ -4,3 +4,8 @@ dist/
 .env.local
 .DS_Store
 *.log
+.tools/
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+.firebase/

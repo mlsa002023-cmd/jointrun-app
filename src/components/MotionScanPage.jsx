@@ -407,7 +407,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       setHistory((prev) => [entry, ...prev].slice(0, 14));
 
       setScanResult(result);
-      triggerFeedback(FEATURE_FLAGS.legacyScoreExperiment
+      triggerFeedback(FEATURE_FLAGS.absoluteScoreUiEnabled
         ? `스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`
         : `스캔 완료! ROM: ${avgRom}°`);
 
@@ -416,7 +416,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
         scanScores: { mobility, stability },
         raw: rawFrames,
-        recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment }),
+        recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
       });
 
       stopDetectLoop();
@@ -456,7 +456,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
       metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
       scanScores: { mobility, stability },
       raw: null,
-      recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment }),
+      recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
       isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
     });
   };
@@ -688,7 +688,7 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
                 </div>
               </div>
               <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
-                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg, { includeScoreLabel: FEATURE_FLAGS.legacyScoreExperiment })}
+                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled })}
               </div>
             </div>
             {history.length > 0 && (

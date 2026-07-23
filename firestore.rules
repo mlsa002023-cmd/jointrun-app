@@ -4,6 +4,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── V9 Decision Loop 스키마 검증 헬퍼 ──
+    // 경로 기반 소유권 검사(request.auth.uid == userId)만으로는 "허용되지 않은 필드/비정상
+    // 데이터"까지는 막지 못한다. RC0 검증 스프린트 요구사항에 따라 필드 타입·enum 값까지 검사한다.
+    function isV9EventShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'primaryTrigger', 'status'])
+        && data.primaryTrigger is string
+        && data.status in ['draft', 'capture_started', 'captured', 'baseline_created',
+                            'recheck_due', 'rechecked', 'compared', 'decision_logged',
+                            'outcome_logged', 'completed', 'capture_failed',
+                            'recheck_skipped', 'comparison_unreliable', 'abandoned', 'deleted']
+        && (!('secondaryTriggers' in data) || data.secondaryTriggers is list)
+        && (!('baselineQualityStatus' in data) || data.baselineQualityStatus == null
+            || data.baselineQualityStatus in ['pass', 'unreliable']);
+    }
+
+    function isV9CaptureShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'type', 'qualityStatus'])
+        && data.type in ['baseline', 'recheck']
+        && data.qualityStatus in ['pass', 'retry', 'unreliable']
+        && (!('handSide' in data) || data.handSide == null || data.handSide in ['left', 'right'])
+        && (!('qualityFlags' in data) || data.qualityFlags is list);
+    }
+
+    function isV9RecheckShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'dueType', 'status'])
+        && data.dueType in ['week2', 'week4', 'custom']
+        && data.status in ['scheduled', 'due', 'completed', 'skipped', 'expired'];
+    }
+
+    function isV9ComparisonShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'comparable'])
+        && data.comparable is bool
+        && (!('userPerceivedChange' in data) || data.userPerceivedChange == null
+            || data.userPerceivedChange in ['less_discomfort', 'same', 'more_discomfort', 'unclear']);
+    }
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
@@ -37,21 +73,31 @@ service cloud.firestore {
 
       // V9 Decision Loop(트리거→기준선→재확인→비교) — 05_DATA_ANALYTICS_SPEC.md.
       // Event/재확인 상태는 진행에 따라 갱신되어야 하므로 write를 허용하되(스캔/이벤트마커와
-      // 달리 상태 필드가 계속 바뀐다), 본인 문서만 접근 가능하다.
+      // 달리 상태 필드가 계속 바뀐다), 본인 문서만 접근 가능하다. 소유권(경로)뿐 아니라
+      // 문서 모양(필드 존재·타입·enum 값)까지 검사해 비정상 데이터 삽입을 막는다.
       match /v9Events/{eventId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+                                && isV9EventShape(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
 
         match /captures/{captureId} {
-          allow read, create: if request.auth != null && request.auth.uid == userId;
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9CaptureShape(request.resource.data);
           allow update, delete: if false; // 촬영 기록은 수정/삭제 불가 (데이터 무결성)
         }
 
         match /rechecks/{recheckId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create, update: if request.auth != null && request.auth.uid == userId
+                                  && isV9RecheckShape(request.resource.data);
         }
 
         match /comparisons/{comparisonId} {
-          allow read, create: if request.auth != null && request.auth.uid == userId;
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9ComparisonShape(request.resource.data);
           allow update, delete: if false;
         }
       }

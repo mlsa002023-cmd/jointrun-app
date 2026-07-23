@@ -6,7 +6,7 @@
 import {
   createV9Event, updateV9EventStatus, saveCapture, markBaselineCreated,
   completeRecheck, skipRecheck, saveComparison, getCapture,
-  getActiveV9Event, getV9EventHistory,
+  getActiveV9Event, getV9EventHistory, __debugForceRecheckDue,
 } from "../lib/firestoreV9";
 
 export function createV9Repository(uid) {
@@ -26,14 +26,14 @@ export function createV9Repository(uid) {
       return saveCapture(uid, eventId, captureData);
     },
 
-    async confirmBaseline(eventId, captureId, baselineCapturedAt) {
+    async confirmBaseline(eventId, captureId, baselineCapturedAt, baselineQualityStatus) {
       if (!uid) return null;
-      return markBaselineCreated(uid, eventId, captureId, baselineCapturedAt);
+      return markBaselineCreated(uid, eventId, captureId, baselineCapturedAt, baselineQualityStatus);
     },
 
-    async completeRecheck(eventId, recheckId, captureId) {
+    async completeRecheck(eventId, recheckId, captureId, qualityStatus) {
       if (!uid) return;
-      return completeRecheck(uid, eventId, recheckId, captureId);
+      return completeRecheck(uid, eventId, recheckId, captureId, qualityStatus);
     },
 
     async skipRecheck(eventId, recheckId) {
@@ -59,6 +59,12 @@ export function createV9Repository(uid) {
     async getHistory(count = 20) {
       if (!uid) return [];
       return getV9EventHistory(uid, count);
+    },
+
+    // 개발/Mock Capture E2E 검증 전용 — RC0 검증 스프린트 참고.
+    async debugForceRecheckDue(eventId, dueType) {
+      if (!uid) return;
+      return __debugForceRecheckDue(uid, eventId, dueType);
     },
   };
 }

@@ -97,6 +97,15 @@ export function evaluateCaptureQuality({ distance, framing, shake, lighting }) {
 }
 
 /**
+ * qualityStatus가 "pass"인 캡처만 정상 개인 기준선/재확인/Scan Completion 유효 결과로 센다.
+ * "그대로 저장하기"로 강제 저장된 캡처(unreliable)는 기록 자체는 보존하되, 이 함수가 false를
+ * 반환하는 모든 곳(홈 안내, 비교 신뢰도, KPI 집계 대상)에서 정상 기록과 구분되어야 한다.
+ */
+export function isReliableCapture(capture) {
+  return capture?.qualityStatus === "pass";
+}
+
+/**
  * S09 "과거의 나와 비교" — 기준선과 현재 촬영을 나란히 볼 수 있는 조건인지 판정한다.
  * 자동으로 좋아짐/나빠짐을 판정하지 않는다 — 조건 일치 여부만 본다(그 다음은 사용자 보고).
  */
@@ -104,8 +113,8 @@ export function evaluateComparability(baselineCapture, currentCapture) {
   const reasons = [];
   if (!baselineCapture || !currentCapture) return { comparable: false, reasons: ["missing_capture"] };
   if (baselineCapture.handSide !== currentCapture.handSide) reasons.push("hand_side_mismatch");
-  if (currentCapture.qualityStatus === "unreliable") reasons.push("current_quality_unreliable");
-  if (baselineCapture.qualityStatus === "unreliable") reasons.push("baseline_quality_unreliable");
+  if (!isReliableCapture(currentCapture)) reasons.push("current_quality_unreliable");
+  if (!isReliableCapture(baselineCapture)) reasons.push("baseline_quality_unreliable");
   return { comparable: reasons.length === 0, reasons };
 }
 

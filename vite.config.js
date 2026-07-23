@@ -34,5 +34,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.js"],
+    // tests/rules는 Firestore 에뮬레이터가 떠 있어야만 통과하는 별도 테스트라 일반
+    // `npm run test`에는 포함하지 않는다 — vitest.rules.config.js + `npm run test:rules`로 따로 실행한다.
+    exclude: ["**/node_modules/**", "**/.git/**", "tests/rules/**"],
   },
 });

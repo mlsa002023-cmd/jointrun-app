@@ -81,3 +81,44 @@ describe("getHomeAgendaState — 04_APP_PRD_V9.md S07", () => {
     expect(getHomeAgendaState(event, now).key).toBe("awaiting_decision");
   });
 });
+
+describe("getHomeAgendaState — 촬영 품질 예외 처리(qualityWarning)", () => {
+  it("정상(pass) 기준선/재확인이면 경고가 없다", () => {
+    const now = new Date("2026-01-05T00:00:00Z");
+    const event = {
+      status: "baseline_created",
+      baselineQualityStatus: "pass",
+      rechecks: [
+        { dueType: "week2", dueAt: new Date("2026-01-15T00:00:00Z"), status: "scheduled" },
+        { dueType: "week4", dueAt: new Date("2026-01-29T00:00:00Z"), status: "scheduled" },
+      ],
+    };
+    expect(getHomeAgendaState(event, now).qualityWarning).toBeNull();
+  });
+
+  it("기준선이 강제저장(unreliable)이면 재촬영을 제안하는 경고를 보여준다", () => {
+    const now = new Date("2026-01-05T00:00:00Z");
+    const event = {
+      status: "baseline_created",
+      baselineQualityStatus: "unreliable",
+      rechecks: [
+        { dueType: "week2", dueAt: new Date("2026-01-15T00:00:00Z"), status: "scheduled" },
+        { dueType: "week4", dueAt: new Date("2026-01-29T00:00:00Z"), status: "scheduled" },
+      ],
+    };
+    expect(getHomeAgendaState(event, now).qualityWarning).toMatch(/기준선/);
+  });
+
+  it("가장 최근 완료된 재확인이 강제저장(unreliable)이면 경고를 보여준다", () => {
+    const now = new Date("2026-01-20T00:00:00Z");
+    const event = {
+      status: "rechecked",
+      baselineQualityStatus: "pass",
+      rechecks: [
+        { dueType: "week2", dueAt: new Date("2026-01-15T00:00:00Z"), status: "completed", qualityStatus: "unreliable" },
+        { dueType: "week4", dueAt: new Date("2026-01-29T00:00:00Z"), status: "scheduled" },
+      ],
+    };
+    expect(getHomeAgendaState(event, now).qualityWarning).toMatch(/재확인/);
+  });
+});

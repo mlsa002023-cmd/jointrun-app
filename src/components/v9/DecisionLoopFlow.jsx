@@ -69,9 +69,9 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
     track(V9_ANALYTICS_EVENTS.CAPTURE_COMPLETED, { eventId, captureType: mode === "baseline" ? "baseline" : "recheck", qualityStatus: quality.qualityStatus });
 
     if (mode === "baseline") {
-      const schedule = await repository.confirmBaseline(eventId, newCaptureId, new Date());
+      const schedule = await repository.confirmBaseline(eventId, newCaptureId, new Date(), quality.qualityStatus);
       setRecheckDueDates(schedule);
-      track(V9_ANALYTICS_EVENTS.BASELINE_CREATED, { eventId, baselineId: newCaptureId });
+      track(V9_ANALYTICS_EVENTS.BASELINE_CREATED, { eventId, baselineId: newCaptureId, qualityStatus: quality.qualityStatus });
       track(V9_ANALYTICS_EVENTS.RECHECK_SCHEDULED, { dueType: "week2", dueAt: schedule?.week2DueAt?.toISOString?.() });
       track(V9_ANALYTICS_EVENTS.RECHECK_SCHEDULED, { dueType: "week4", dueAt: schedule?.week4DueAt?.toISOString?.() });
       setStep("saved");
@@ -79,8 +79,8 @@ export default function DecisionLoopFlow({ mode, event, recheck, onClose, onComp
     }
 
     // recheck 모드: 재확인 완료 처리 후 기준선 캡처를 불러와 비교 화면으로 이동.
-    await repository.completeRecheck(eventId, recheck.id, newCaptureId);
-    track(V9_ANALYTICS_EVENTS.RECHECK_COMPLETED, { dueType: recheck.dueType, comparable: null });
+    await repository.completeRecheck(eventId, recheck.id, newCaptureId, quality.qualityStatus);
+    track(V9_ANALYTICS_EVENTS.RECHECK_COMPLETED, { dueType: recheck.dueType, qualityStatus: quality.qualityStatus });
 
     const [baseline, current] = await Promise.all([
       repository.getCapture(eventId, event.baselineCaptureId),

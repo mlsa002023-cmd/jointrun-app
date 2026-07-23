@@ -34,7 +34,7 @@ function RecentTimelinePreview({ setActiveTab }) {
               <div key={`${item.kind}-${item.id}`} className="flex items-center gap-2 text-[11px] text-slate-700">
                 <span className="text-slate-400 shrink-0">{formatTimelineDate(item.date)}</span>
                 <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
-                <span className="truncate">{item.label}{FEATURE_FLAGS.legacyScoreExperiment && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                <span className="truncate">{item.label}{FEATURE_FLAGS.absoluteScoreUiEnabled && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
               </div>
             );
           })}

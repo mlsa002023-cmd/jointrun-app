@@ -14,6 +14,8 @@ import {
 import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
 import { useV9Agenda } from "../hooks/useV9Agenda";
+import { useV9Repository } from "../hooks/useV9Repository";
+import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
 import EventMarkerModal from "./EventMarkerModal";
 import {
@@ -81,6 +83,7 @@ const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: 
 const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = useHomeData();
 // V9 Decision Loop(트리거→기준선→재확인→비교) 진행 상태 — 04_APP_PRD_V9.md S07 홈 상단 카드.
 const { activeEvent, agenda, refresh: refreshAgenda } = useV9Agenda();
+const v9Repository = useV9Repository();
 const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "baseline"|"recheck", recheck? } | null
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
@@ -325,21 +328,40 @@ useEffect(() => {
               {activeTab === "home" && (
                 <>
                 {agenda && (
-                  <div style={{background:"white",border:"1px solid #bfdbfe",borderRadius:14,padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                    <div>
-                      <div style={{fontSize:10,color:"#1d4ed8",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
-                      <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{agenda.label}</div>
+                  <div style={{background:"white",border:"1px solid #bfdbfe",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                      <div>
+                        <div style={{fontSize:10,color:"#1d4ed8",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
+                        <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{agenda.label}</div>
+                      </div>
+                      {agenda.key === "no_baseline" && (
+                        <button onClick={() => setDecisionLoop({ mode: "baseline" })}
+                          style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                          첫 기준선 만들기
+                        </button>
+                      )}
+                      {agenda.key === "recheck_ready" && (
+                        <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                          style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
+                          지금 재확인하기
+                        </button>
+                      )}
                     </div>
-                    {agenda.key === "no_baseline" && (
-                      <button onClick={() => setDecisionLoop({ mode: "baseline" })}
-                        style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
-                        첫 기준선 만들기
-                      </button>
+                    {agenda.qualityWarning && (
+                      <div style={{marginTop:10,padding:"8px 10px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontSize:11,color:"#92400e",fontWeight:600,lineHeight:1.5}}>
+                        {agenda.qualityWarning}
+                      </div>
                     )}
-                    {agenda.key === "recheck_ready" && (
-                      <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
-                        style={{minHeight:40,padding:"0 16px",background:"#1d4ed8",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
-                        지금 재확인하기
+                    {/* MOCK_CAPTURE_ENABLED가 꺼져 있으면(production 항상 꺼짐) 렌더링되지 않는다.
+                        2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 개발용 버튼. */}
+                    {MOCK_CAPTURE_ENABLED && (agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && agenda.recheck && (
+                      <button
+                        onClick={async () => {
+                          await v9Repository.debugForceRecheckDue(activeEvent.id, agenda.recheck.dueType);
+                          refreshAgenda();
+                        }}
+                        style={{marginTop:10,width:"100%",minHeight:36,background:"rgba(250,204,21,0.12)",border:"1px solid rgba(202,138,4,0.4)",color:"#854d0e",borderRadius:8,fontSize:11,fontWeight:700}}>
+                        MOCK: 재확인 날짜를 오늘로 당기기 (개발용)
                       </button>
                     )}
                   </div>

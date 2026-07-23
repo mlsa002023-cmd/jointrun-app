@@ -47,7 +47,11 @@ export function daysUntil(dueAt, now = new Date()) {
 
 /**
  * 홈 상단 카드(S07) 상태 라벨을 판정한다.
- * event: { status, rechecks: [{ dueType, dueAt, status }] } 형태를 기대한다.
+ * event: { status, baselineQualityStatus, rechecks: [{ dueType, dueAt, status, qualityStatus }] } 형태를 기대한다.
+ *
+ * qualityWarning: 기준선 또는 가장 최근 완료된 재확인이 "그대로 저장하기"(강제 저장, qualityStatus
+ * !== "pass")로 남겨졌을 때만 채워진다 — 정상 기록으로 취급하지 않고 다음 방문 때 재촬영을
+ * 우선 제안하기 위한 값이다(08_QA_ACCEPTANCE_GATE.md 촬영 품질 예외 처리 요건).
  */
 export function getHomeAgendaState(event, now = new Date()) {
   if (!event) return { key: "no_baseline", label: "첫 기준선 만들기" };
@@ -55,23 +59,34 @@ export function getHomeAgendaState(event, now = new Date()) {
   const week2 = event.rechecks?.find((r) => r.dueType === "week2");
   const week4 = event.rechecks?.find((r) => r.dueType === "week4");
 
+  const qualityWarning = (() => {
+    if (event.baselineQualityStatus && event.baselineQualityStatus !== "pass") {
+      return "기준선 촬영 조건이 불안정하게 저장됐어요. 다음 재확인 때는 조건을 맞춰 다시 촬영해보세요.";
+    }
+    const lastCompletedRecheck = [week4, week2].find((r) => r?.status === "completed");
+    if (lastCompletedRecheck && lastCompletedRecheck.qualityStatus && lastCompletedRecheck.qualityStatus !== "pass") {
+      return "지난 재확인 촬영 조건이 불안정했어요. 이번엔 조건을 맞춰 다시 촬영해보세요.";
+    }
+    return null;
+  })();
+
   if (week2 && week2.status !== "completed" && week2.status !== "skipped") {
     const state = getRecheckWindowState(week2.dueAt, now);
-    if (state === "due") return { key: "recheck_ready", label: "오늘 2주 기록을 다시 확인할 수 있어요", recheck: week2 };
-    if (state === "scheduled") return { key: "week2_waiting", label: `다음 재확인까지 D-${daysUntil(week2.dueAt, now)}`, recheck: week2 };
+    if (state === "due") return { key: "recheck_ready", label: "오늘 2주 기록을 다시 확인할 수 있어요", recheck: week2, qualityWarning };
+    if (state === "scheduled") return { key: "week2_waiting", label: `다음 재확인까지 D-${daysUntil(week2.dueAt, now)}`, recheck: week2, qualityWarning };
     // expired인데 아직 completed가 아니면— 그래도 재확인 자체는 유효하게 열어준다(늦게라도 기록 가능).
-    return { key: "recheck_ready", label: "2주 재확인이 예정일을 지났어요. 지금 기록해보세요.", recheck: week2 };
+    return { key: "recheck_ready", label: "2주 재확인이 예정일을 지났어요. 지금 기록해보세요.", recheck: week2, qualityWarning };
   }
 
   if (week4 && week4.status !== "completed" && week4.status !== "skipped") {
     const state = getRecheckWindowState(week4.dueAt, now);
-    if (state === "due") return { key: "recheck_ready", label: "오늘 4주 기록을 다시 확인할 수 있어요", recheck: week4 };
-    if (state === "scheduled") return { key: "week4_waiting", label: "4주 비교까지 한 번 남았습니다", recheck: week4 };
-    return { key: "recheck_ready", label: "4주 재확인이 예정일을 지났어요. 지금 기록해보세요.", recheck: week4 };
+    if (state === "due") return { key: "recheck_ready", label: "오늘 4주 기록을 다시 확인할 수 있어요", recheck: week4, qualityWarning };
+    if (state === "scheduled") return { key: "week4_waiting", label: "4주 비교까지 한 번 남았습니다", recheck: week4, qualityWarning };
+    return { key: "recheck_ready", label: "4주 재확인이 예정일을 지났어요. 지금 기록해보세요.", recheck: week4, qualityWarning };
   }
 
   if (week4?.status === "completed" && event.status !== "outcome_logged" && event.status !== "completed") {
-    return { key: "awaiting_decision", label: "선택한 관리의 결과를 기록해 주세요" };
+    return { key: "awaiting_decision", label: "선택한 관리의 결과를 기록해 주세요", qualityWarning };
   }
 
   return { key: "loop_completed", label: "이번 판단 루프를 완료했어요" };

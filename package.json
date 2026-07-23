@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "test": "vitest run",
+    "test:rules": "firebase emulators:exec --project demo-jointrun-rules-test --only firestore \"vitest run --config vitest.rules.config.js\"",
     "seed": "node tools/seed/timelineSeed.js"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@firebase/rules-unit-testing": "^3.0.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "4.3.4",
@@ -30,6 +32,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.5.3",
     "firebase-admin": "^14.1.0",
+    "firebase-tools": "^15.24.0",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
     "postcss": "8.4.49",

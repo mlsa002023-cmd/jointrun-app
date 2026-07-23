@@ -12,13 +12,64 @@ import { Camera as CameraIcon, Check } from "lucide-react";
 import CameraView from "../CameraView";
 import { initHandTracker, detectHands, disposeHandTracker } from "../../lib/handTracker";
 import { checkDistance, checkFraming, checkShake, checkLighting, evaluateCaptureQuality, sampleFrameBrightness } from "../../lib/captureQuality";
+import { MOCK_CAPTURE_ENABLED } from "../../config/featureFlags";
 
 const HOLD_MS = 900;
 const SHAKE_BUFFER_SIZE = 8;
 const BRIGHTNESS_SAMPLE_INTERVAL_MS = 600;
 const MAX_ATTEMPTS_BEFORE_OVERRIDE = 4;
 
+// ─────────────────────────────────────────────
+// Mock Capture — 카메라 하드웨어 없이 트리거→기준선→재확인→비교 전체 흐름을 개발 환경에서
+// E2E로 검증하기 위한 화면. MOCK_CAPTURE_ENABLED(featureFlags.js)가 이중으로 차단하므로
+// 이 컴포넌트 자체는 production 빌드에서도 번들에는 남아있을 수 있지만 절대 렌더링되지
+// 않는다 — 방어를 한 겹 더 두기 위해 여기서도 한 번 더 체크한다(방어적 이중 가드).
+// ─────────────────────────────────────────────
+function MockCaptureScreen({ handSide, onCaptured, onCancel }) {
+  if (!MOCK_CAPTURE_ENABLED) return null; // 이중 가드 — 이 지점까지 왔어도 플래그가 꺼져 있으면 아무것도 렌더링하지 않는다.
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#0f172a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: "#facc15", background: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.4)", borderRadius: 999, padding: "6px 14px", marginBottom: 20 }}>
+        MOCK CAPTURE — 개발용, 실기기 카메라를 사용하지 않습니다
+      </span>
+      <p style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 700, marginBottom: 24, textAlign: "center" }}>
+        {handSide === "left" ? "왼손" : "오른손"} 샘플 캡처를 선택하세요
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
+        <button
+          type="button"
+          onClick={() => onCaptured({ qualityStatus: "pass", qualityFlags: [] })}
+          style={{ minHeight: 48, background: "#1d4ed8", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800 }}
+        >
+          샘플 캡처 (품질 통과)
+        </button>
+        <button
+          type="button"
+          onClick={() => onCaptured({ qualityStatus: "unreliable", qualityFlags: ["mock_low_quality"] })}
+          style={{ minHeight: 48, background: "transparent", color: "#fca5a5", border: "1px solid rgba(252,165,165,0.5)", borderRadius: 12, fontSize: 14, fontWeight: 800 }}
+        >
+          샘플 캡처 (품질 낮음 시뮬레이션)
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{ minHeight: 48, background: "rgba(255,255,255,0.08)", color: "#e2e8f0", border: "none", borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+        >
+          촬영 취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function GuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
+  if (MOCK_CAPTURE_ENABLED) {
+    return <MockCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;
+  }
+  return <RealGuidedCaptureScreen handSide={handSide} onCaptured={onCaptured} onCancel={onCancel} />;
+}
+
+function RealGuidedCaptureScreen({ handSide, onCaptured, onCancel }) {
   const cameraRef = useRef(null);
   const rafRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);

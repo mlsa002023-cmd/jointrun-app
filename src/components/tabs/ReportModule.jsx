@@ -29,9 +29,9 @@ function ReportModule({ currentProfile }) {
       </div>
       <PatternInsightCard scans={scans} />
       {/* V9 정렬(JR-WEB-202/08_QA_ACCEPTANCE_GATE.md Gate B) — 절대 점수(Finger Score/Pain
-          Trend) 카드는 legacyScoreExperiment 플래그 뒤로 숨긴다. 계산 로직·데이터는 그대로
+          Trend) 카드는 absoluteScoreUiEnabled 플래그 뒤로 숨긴다. 계산 로직·데이터는 그대로
           유지되며, 플래그를 true로 되돌리면 즉시 복원된다(가역성). */}
-      {FEATURE_FLAGS.legacyScoreExperiment && (
+      {FEATURE_FLAGS.absoluteScoreUiEnabled && (
         <div className="space-y-2">
           {biomarkers.map(b => (
             <JTCard key={b.name} className="flex items-center justify-between gap-3">
@@ -63,7 +63,7 @@ function ReportModule({ currentProfile }) {
       ) : (
         <>
           <MonthlySummaryCard summary={monthly.summary} />
-          {FEATURE_FLAGS.legacyScoreExperiment && <MonthlyTrendChart trend={monthly.trend} />}
+          {FEATURE_FLAGS.absoluteScoreUiEnabled && <MonthlyTrendChart trend={monthly.trend} />}
           <MonthlyEventSummary eventGroups={monthly.eventGroups} />
           <MonthlyHighlightCard highlight={monthly.highlight} />
         </>

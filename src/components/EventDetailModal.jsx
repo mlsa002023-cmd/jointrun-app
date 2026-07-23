@@ -41,7 +41,7 @@ function EventDetailModal({ event, scans, uid, onClose }) {
               이 기록 전후 {windowWeeks}주 이내에 스캔 기록이 더 있으면 변화를 비교해서 보여드려요.
             </p>
           </div>
-        ) : !FEATURE_FLAGS.legacyScoreExperiment ? (
+        ) : !FEATURE_FLAGS.absoluteScoreUiEnabled ? (
           // V9 정렬(JR-WEB-202) — 절대 점수 기반 전후 비교는 숨긴다. 기준선 대비 비교 화면
           // (ComparisonScreen, 04_APP_PRD_V9.md S09)이 Decision Log와 연결되면 이 자리를 대체한다.
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">

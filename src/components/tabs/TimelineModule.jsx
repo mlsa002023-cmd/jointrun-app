@@ -62,7 +62,7 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
                   className={`w-full flex items-center gap-2 text-[11px] text-slate-700 py-1.5 ${isEvent ? "text-left hover:bg-slate-50 rounded-lg -mx-1 px-1" : ""}`}>
                   <span className="text-slate-400 shrink-0 w-14">{formatTimelineDate(item.date)}</span>
                   <Icon className={`w-3.5 h-3.5 shrink-0 ${item.kind === "scan" ? "text-blue-500" : "text-orange-500"}`} />
-                  <span className="truncate">{item.label}{FEATURE_FLAGS.legacyScoreExperiment && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
+                  <span className="truncate">{item.label}{FEATURE_FLAGS.absoluteScoreUiEnabled && item.kind === "scan" && item.scoreTotal != null ? ` (${item.scoreTotal}점)` : ""}</span>
                 </Row>
               );
             })}
@@ -101,7 +101,7 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
               </ResponsiveContainer>
             </div>
           </div>
-          {FEATURE_FLAGS.legacyScoreExperiment && (
+          {FEATURE_FLAGS.absoluteScoreUiEnabled && (
             <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
               <p className="text-[10px] font-bold text-blue-700 mb-2">실제 스캔 기록 — Finger Score™ 추이</p>
               <div className="h-36 w-full">
@@ -122,7 +122,7 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
         </>
       )}
 
-      {FEATURE_FLAGS.legacyScoreExperiment && (
+      {FEATURE_FLAGS.absoluteScoreUiEnabled && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
           <p className="text-[10px] font-bold text-blue-800 mb-2">
             주간 회복 변화: <span className="text-blue-600">{realWeeklyChange || currentProfile.weeklyROMChange}</span>
