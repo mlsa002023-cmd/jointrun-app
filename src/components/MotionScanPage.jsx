@@ -487,9 +487,9 @@ export default function MotionScanPage({
   }, [finishScan]);
 
   const runSimulation = () => {
-    // P0 안전 요건 — 시뮬레이션 스캔·결과 생성은 개발 환경에서만 동작한다. 버튼 자체를
-    // prod에서 숨기지만(아래 JSX), 다른 경로로 호출되는 것까지 막기 위해 함수에서도 가드한다.
-    if (!import.meta.env.DEV) return;
+    // RC1.2.1 §4 — 시뮬레이션은 QA gate(로컬 DEV 또는 QA 모드+allowlist)를 통과한 사용자에게만.
+    // 버튼을 숨기는 것과 별개로, 다른 경로로 호출되는 것까지 함수에서 한 번 더 막는다(fail-closed).
+    if (!qaAllowed) return;
     const simFingers = [
       { key: "index", name: "검지", flexion: 118, score: 82 },
       { key: "middle", name: "중지", flexion: 125, score: 88 },
@@ -675,7 +675,7 @@ export default function MotionScanPage({
             <button onClick={startScan} className="bg-blue-500 hover:bg-blue-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
               관찰 기록 시작
             </button>
-            {import.meta.env.DEV && (
+            {qaAllowed && (
               <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
                 시뮬레이션으로 건너뛰기
               </button>
@@ -701,7 +701,7 @@ export default function MotionScanPage({
                 <button onClick={restart} className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">
                   다시 시도
                 </button>
-                {import.meta.env.DEV && (
+                {qaAllowed && (
                   <button onClick={runSimulation} className="bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
                     시뮬레이션 스캔 실행
                   </button>

@@ -51,6 +51,44 @@ export const RECHECK_STATUS = {
 export const CAPTURE_TYPE = { BASELINE: "baseline", RECHECK: "recheck", OBSERVATIONAL_ANGLE: "observational_angle" };
 export const QUALITY_STATUS = { PASS: "pass", RETRY: "retry", UNRELIABLE: "unreliable" };
 
+// ─────────────────────────────────────────────
+// RC1.2.1 §3 — "기록을 마쳤다"와 "동일 조건 비교 품질이 검증됐다"는 서로 다른 사실이다.
+//   recordingStatus         : 3개 동작 기록을 끝냈는가 (완료 여부)
+//   comparisonQualityStatus : 조명·거리·흔들림 등 비교 조건을 실제로 검증했는가
+// 각도 관찰 흐름은 아직 비교 조건을 검증하지 않으므로 unverified를 쓴다 — pass를 쓰지 않는다.
+// ─────────────────────────────────────────────
+export const RECORDING_STATUS = { COMPLETED: "completed", INCOMPLETE: "incomplete" };
+export const COMPARISON_QUALITY_STATUS = {
+  UNVERIFIED: "unverified", // 비교 조건 미검증(기본값)
+  PASS: "pass",             // 실제 비교 조건 검증 통과
+  UNRELIABLE: "unreliable", // 검증했으나 비교에 부적합
+};
+
+/**
+ * 기존 capture(qualityStatus만 있는 문서)와 신규 capture(recordingStatus/
+ * comparisonQualityStatus)를 같은 모양으로 읽기 위한 adapter. 마이그레이션 없이 동작한다.
+ *  - 신규 필드가 있으면 그대로 사용
+ *  - 없으면 legacy qualityStatus에서 유도: pass → 기록완료 + 비교품질 pass(과거 의미 보존),
+ *    retry/unreliable → 기록완료 + unreliable
+ */
+export function readCaptureQuality(capture) {
+  if (!capture) return { recordingStatus: null, comparisonQualityStatus: null };
+  if (capture.recordingStatus || capture.comparisonQualityStatus) {
+    return {
+      recordingStatus: capture.recordingStatus ?? RECORDING_STATUS.COMPLETED,
+      comparisonQualityStatus: capture.comparisonQualityStatus ?? COMPARISON_QUALITY_STATUS.UNVERIFIED,
+    };
+  }
+  const legacy = capture.qualityStatus;
+  if (!legacy) return { recordingStatus: null, comparisonQualityStatus: null };
+  return {
+    recordingStatus: RECORDING_STATUS.COMPLETED,
+    comparisonQualityStatus: legacy === "pass"
+      ? COMPARISON_QUALITY_STATUS.PASS
+      : COMPARISON_QUALITY_STATUS.UNRELIABLE,
+  };
+}
+
 export const PERCEIVED_CHANGE = {
   LESS: "less_discomfort",
   SAME: "same",

@@ -34,6 +34,23 @@ function fmtDate(date) {
 }
 const HAND_LABEL = { left: "왼손", right: "오른손" };
 
+// RC1.2.1 §2 — 관찰 각도 표기. 값이 없으면 "—"(재확인 전 기록에는 각도가 없을 수 있다).
+function fmtRom(v) {
+  return v == null ? "—" : `${Math.round(v)}°`;
+}
+
+// 기준선·현재 capture의 손가락별 관찰 각도를 같은 key로 짝지어 행 목록을 만든다.
+function fingerRows(baselineCapture, currentCapture) {
+  const base = baselineCapture?.perFingerObservedRomDeg ?? [];
+  const curr = currentCapture?.perFingerObservedRomDeg ?? [];
+  const keys = [...new Set([...base.map((f) => f.key), ...curr.map((f) => f.key)])];
+  return keys.map((key) => {
+    const b = base.find((f) => f.key === key);
+    const c = curr.find((f) => f.key === key);
+    return { key, name: b?.name ?? c?.name ?? key, baseline: b?.romDeg, current: c?.romDeg };
+  });
+}
+
 const SYMPTOM_VALUE_LABEL = {
   swellingSelfReport: { none: "없음", mild: "조금", high: "많음", unknown: "모르겠음" },
   warmthSelfReport: { none: "없음", present: "있음", unknown: "모르겠음" },
@@ -48,7 +65,7 @@ function formatSymptomValue(key, value) {
 
 export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed }) {
   const [change, setChange] = useState(null);
-  const { comparable, reasons } = evaluateComparability(baselineCapture, currentCapture);
+  const { comparable, reasons, comparisonQualityUnverified } = evaluateComparability(baselineCapture, currentCapture);
 
   useEffect(() => { onViewed?.({ comparable }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,6 +98,16 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
         </div>
       )}
 
+      {/* RC1.2.1 §3 — 조명·거리·흔들림을 아직 검증하지 않은 기록임을 사실대로 알린다.
+          "비교 불가" 경고도, "비교 가능" 확정도 아닌 중립 안내. */}
+      {comparable && comparisonQualityUnverified && (
+        <div style={{ background: "#F4F6FA", border: "1px solid #E1E7EF", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: "#5B6478", margin: 0, lineHeight: 1.6 }}>
+            조명·거리·흔들림 등 동일 조건 여부는 아직 검증하지 않았습니다. 아래 값은 각 시점에 관찰된 기록입니다.
+          </p>
+        </div>
+      )}
+
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 11, fontWeight: 800, color: "#94a3b8", marginBottom: 10 }}>
           <span>항목</span><span style={{ textAlign: "center" }}>기준선</span><span style={{ textAlign: "center" }}>지금</span>
@@ -95,6 +122,20 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
           <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[baselineCapture?.handSide] ?? "-"}</span>
           <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[currentCapture?.handSide] ?? "-"}</span>
         </div>
+        {/* RC1.2.1 §2 — 관찰 각도(평균 ROM)와 손가락별 각도를 증상과 나란히 보여준다.
+            자동으로 호전·악화를 판정하지 않는다 — 값만 나란히 놓고 판단은 사용자가 한다. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+          <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>평균 ROM</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(baselineCapture?.averageObservedRomDeg)}</span>
+          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(currentCapture?.averageObservedRomDeg)}</span>
+        </div>
+        {fingerRows(baselineCapture, currentCapture).map((row) => (
+          <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+            <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.name} 각도</span>
+            <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.baseline)}</span>
+            <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.current)}</span>
+          </div>
+        ))}
         {SYMPTOM_ROWS.map((row) => (
           <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.label}</span>

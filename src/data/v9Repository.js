@@ -8,7 +8,7 @@ import {
   completeRecheck, skipRecheck, saveComparison, getCapture,
   getActiveV9Event, getV9EventHistory, getV9EventHistoryDetailed, getEventDetail,
   saveDecision, saveOutcome, __debugForceRecheckDue, resetV9DataForUser,
-  saveObservationalAngleCapture, confirmBaselineWithSymptom,
+  saveObservationalAngleCapture, confirmBaselineWithSymptom, completeRecheckWithSymptom,
 } from "../lib/firestoreV9";
 
 export function createV9Repository(uid) {
@@ -42,6 +42,12 @@ export function createV9Repository(uid) {
     async confirmBaselineWithSymptom(eventId, captureId, symptomSnapshot) {
       if (!uid) return null;
       return confirmBaselineWithSymptom(uid, eventId, captureId, symptomSnapshot);
+    },
+
+    // RC1.2.1 §2 — 재확인 각도 관찰 + 증상을 원자적으로 완료 처리.
+    async completeRecheckWithSymptom(eventId, recheckId, captureId, symptomSnapshot) {
+      if (!uid) return null;
+      return completeRecheckWithSymptom(uid, eventId, recheckId, captureId, symptomSnapshot);
     },
 
     async completeRecheck(eventId, recheckId, captureId, qualityStatus) {

@@ -20,11 +20,12 @@
 import { FIREBASE_ENABLED, db } from "../firebase/config";
 import {
   collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc,
-  query, orderBy, limit, serverTimestamp,
+  query, orderBy, limit, serverTimestamp, runTransaction,
 } from "firebase/firestore";
 import {
   V9_SCHEMA_VERSION, CAPTURE_PROTOCOL_VERSION, ALGORITHM_VERSION,
   EVENT_STATUS, RECHECK_STATUS, RECHECK_DUE_TYPE, CAPTURE_TYPE,
+  RECORDING_STATUS, COMPARISON_QUALITY_STATUS,
 } from "./v9EventTypes";
 import { computeRecheckDueDates } from "./recheckSchedule";
 import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
@@ -136,40 +137,55 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
  * (실시간 랜드마크는 각도 계산에만 쓰고 이 함수에 도달하기 전에 폐기된다.)
  * 저장 직후 Event 상태를 symptom_pending으로 두어, 증상 기록을 마쳐야 baseline이 확정되게 한다.
  */
-export async function saveObservationalAngleCapture(uid, eventId, { handSide, perFingerObservedRomDeg, averageObservedRomDeg, qualityStatus, qualityFlags }) {
+export async function saveObservationalAngleCapture(uid, eventId, {
+  handSide, perFingerObservedRomDeg, averageObservedRomDeg,
+  captureType = CAPTURE_TYPE.BASELINE, qualityFlags,
+}) {
   if (!uid || !eventId) return null;
+  // RC1.2.1 §3 — "기록 완료"와 "비교 품질 검증"을 분리한다. 각도 흐름은 조명·거리·흔들림을
+  // 실제로 검증하지 않으므로 comparisonQualityStatus는 unverified로 둔다(pass 금지).
   const base = {
     schemaVersion: V9_SCHEMA_VERSION,
     eventId,
-    type: CAPTURE_TYPE.BASELINE, // 기존 리더(type==="baseline") 호환
+    type: captureType, // baseline | recheck (기존 리더 호환 유지)
     handSide: handSide ?? null,
     perFingerObservedRomDeg: perFingerObservedRomDeg ?? [],
     averageObservedRomDeg: averageObservedRomDeg ?? null,
-    qualityStatus: qualityStatus ?? null,
+    recordingStatus: RECORDING_STATUS.COMPLETED,
+    comparisonQualityStatus: COMPARISON_QUALITY_STATUS.UNVERIFIED,
     qualityFlags: qualityFlags ?? [],
     symptomSnapshot: null, // 증상은 다음 단계에서 채운다(symptom_pending)
     captureProtocolVersion: CAPTURE_PROTOCOL_VERSION,
     algorithmVersion: ALGORITHM_VERSION,
     appVersion: APP_VERSION,
   };
+  const isBaseline = captureType === CAPTURE_TYPE.BASELINE;
+
   if (USE_DEMO_STORE) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("cap");
     event.captures.push({ id, ...base, capturedAt: new Date() });
-    event.status = EVENT_STATUS.SYMPTOM_PENDING;
-    event.baselineCaptureId = id;
-    event.baselineQualityStatus = qualityStatus ?? null;
+    if (isBaseline) {
+      event.status = EVENT_STATUS.SYMPTOM_PENDING;
+      event.baselineCaptureId = id;
+      event.baselineComparisonQualityStatus = base.comparisonQualityStatus;
+      // 재확인이 "같은 손"인지 확인·검증할 수 있도록 Event에 보존한다(Rules에서도 사용).
+      event.baselineHandSide = base.handSide;
+    }
     event.updatedAt = new Date();
     return id;
   }
   const ref = await addDoc(capturesCol(uid, eventId), { ...base, capturedAt: serverTimestamp() });
-  await updateDoc(eventDoc(uid, eventId), {
-    status: EVENT_STATUS.SYMPTOM_PENDING,
-    baselineCaptureId: ref.id,
-    baselineQualityStatus: qualityStatus ?? null,
-    updatedAt: serverTimestamp(),
-  });
+  if (isBaseline) {
+    await updateDoc(eventDoc(uid, eventId), {
+      status: EVENT_STATUS.SYMPTOM_PENDING,
+      baselineCaptureId: ref.id,
+      baselineComparisonQualityStatus: base.comparisonQualityStatus,
+      baselineHandSide: base.handSide,
+      updatedAt: serverTimestamp(),
+    });
+  }
   return ref.id;
 }
 
@@ -181,17 +197,78 @@ export async function saveObservationalAngleCapture(uid, eventId, { handSide, pe
  */
 export async function confirmBaselineWithSymptom(uid, eventId, captureId, symptomSnapshot) {
   if (!uid || !eventId || !captureId) return null;
+
   if (USE_DEMO_STORE) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    // symptom_pending일 때만 실행(중복 확정 방지).
     if (!event || event.status !== EVENT_STATUS.SYMPTOM_PENDING) return null;
     const capture = event.captures.find((c) => c.id === captureId);
-    if (capture && capture.symptomSnapshot == null) capture.symptomSnapshot = symptomSnapshot ?? null;
-    // markBaselineCreated와 동일한 확정·일정 생성(중복 baselineCaptureId 세팅은 무해).
-    return markBaselineCreated(uid, eventId, captureId, capture?.capturedAt ?? new Date(), event.baselineQualityStatus ?? "pass");
+    if (!capture) return null;
+    // 데모 스토어는 단일 스레드라 아래 네 변경이 원자적으로 적용된다(실패 지점 없음).
+    if (capture.symptomSnapshot == null) capture.symptomSnapshot = symptomSnapshot ?? null;
+    const { week2DueAt, week4DueAt } = computeRecheckDueDates(capture.capturedAt ?? new Date());
+    event.status = EVENT_STATUS.BASELINE_CREATED;
+    event.baselineCaptureId = captureId;
+    event.nextRecheckDueAt = week2DueAt;
+    event.updatedAt = new Date();
+    // 결정적 ID — 중복 실행해도 같은 문서 2개만 존재한다.
+    const mk = (dueType, dueAt) => ({
+      id: `${dueType}-${captureId}`,
+      schemaVersion: V9_SCHEMA_VERSION,
+      dueType,
+      dueAt,
+      status: RECHECK_STATUS.SCHEDULED,
+      captureId: null,
+      qualityStatus: null,
+      completedAt: null,
+    });
+    for (const [dueType, dueAt] of [[RECHECK_DUE_TYPE.WEEK2, week2DueAt], [RECHECK_DUE_TYPE.WEEK4, week4DueAt]]) {
+      const id = `${dueType}-${captureId}`;
+      if (!event.rechecks.some((r) => r.id === id)) event.rechecks.push(mk(dueType, dueAt));
+    }
+    return { week2Id: `week2-${captureId}`, week4Id: `week4-${captureId}`, week2DueAt, week4DueAt };
   }
-  // 증상 저장(캡처 1회 업데이트) → 성공 후 baseline 확정.
-  await updateDoc(doc(db, "users", uid, "v9Events", eventId, "captures", captureId), { symptomSnapshot: symptomSnapshot ?? null });
-  return markBaselineCreated(uid, eventId, captureId, new Date(), "pass");
+
+  // ── 실제 Firestore: 네 쓰기를 하나의 transaction으로 묶는다(중간 실패 시 전체 rollback) ──
+  // 1) Capture symptomSnapshot 1회 부착  2) Event baseline_created 전환
+  // 3) week2 Recheck 생성               4) week4 Recheck 생성
+  // Recheck 문서 ID는 `week2-{captureId}` / `week4-{captureId}`로 결정적이라, 재시도해도
+  // 중복 생성되지 않는다(같은 문서를 다시 set). 일정은 Capture의 capturedAt을 기준으로 계산한다.
+  const eventRef = eventDoc(uid, eventId);
+  const captureRef = doc(db, "users", uid, "v9Events", eventId, "captures", captureId);
+  const week2Ref = doc(db, "users", uid, "v9Events", eventId, "rechecks", `week2-${captureId}`);
+  const week4Ref = doc(db, "users", uid, "v9Events", eventId, "rechecks", `week4-${captureId}`);
+
+  return runTransaction(db, async (tx) => {
+    const [eventSnap, captureSnap] = await Promise.all([tx.get(eventRef), tx.get(captureRef)]);
+    if (!eventSnap.exists() || !captureSnap.exists()) return null;
+
+    const eventData = eventSnap.data();
+    // symptom_pending일 때만 확정한다 — 이미 baseline_created면 재실행해도 아무 것도 하지 않는다.
+    if (eventData.status !== EVENT_STATUS.SYMPTOM_PENDING) return null;
+
+    const captureData = captureSnap.data();
+    const capturedAt = captureData.capturedAt?.toDate ? captureData.capturedAt.toDate() : (captureData.capturedAt ?? new Date());
+    const { week2DueAt, week4DueAt } = computeRecheckDueDates(capturedAt);
+
+    // 1) 증상은 1회만 부착(이미 있으면 덮어쓰지 않는다).
+    if (captureData.symptomSnapshot == null) {
+      tx.update(captureRef, { symptomSnapshot: symptomSnapshot ?? null });
+    }
+    // 2) Event 확정 — 기존 baselineComparisonQualityStatus를 보존한다(덮어쓰지 않음).
+    tx.update(eventRef, {
+      status: EVENT_STATUS.BASELINE_CREATED,
+      baselineCaptureId: captureId,
+      nextRecheckDueAt: week2DueAt,
+      updatedAt: serverTimestamp(),
+    });
+    // 3)·4) 결정적 ID로 2주·4주 재확인 생성(재시도 시 동일 문서 재작성 → 중복 없음).
+    const recheckBase = { schemaVersion: V9_SCHEMA_VERSION, status: RECHECK_STATUS.SCHEDULED, captureId: null, completedAt: null };
+    tx.set(week2Ref, { ...recheckBase, dueType: RECHECK_DUE_TYPE.WEEK2, dueAt: week2DueAt });
+    tx.set(week4Ref, { ...recheckBase, dueType: RECHECK_DUE_TYPE.WEEK4, dueAt: week4DueAt });
+
+    return { week2Id: week2Ref.id, week4Id: week4Ref.id, week2DueAt, week4DueAt };
+  });
 }
 
 /**
@@ -274,6 +351,51 @@ export async function completeRecheck(uid, eventId, recheckId, captureId, qualit
     completedAt: serverTimestamp(),
   });
   await updateDoc(eventDoc(uid, eventId), { status: EVENT_STATUS.RECHECKED, updatedAt: serverTimestamp() });
+}
+
+/**
+ * RC1.2.1 §2 — 재확인 각도 관찰에 증상을 붙이고 재확인을 완료 처리한다(원자적).
+ * capture symptomSnapshot 1회 부착 + recheck completed + Event rechecked를 한 transaction으로 묶어
+ * 중간 실패 시 전체 rollback되게 한다. 재시도해도 같은 문서를 다시 쓰므로 중복이 생기지 않는다.
+ */
+export async function completeRecheckWithSymptom(uid, eventId, recheckId, captureId, symptomSnapshot) {
+  if (!uid || !eventId || !recheckId || !captureId) return null;
+
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event) return null;
+    const recheck = event.rechecks.find((r) => r.id === recheckId);
+    if (!recheck || recheck.status === RECHECK_STATUS.COMPLETED) return null; // 중복 완료 방지
+    const capture = event.captures.find((c) => c.id === captureId);
+    if (capture && capture.symptomSnapshot == null) capture.symptomSnapshot = symptomSnapshot ?? null;
+    recheck.status = RECHECK_STATUS.COMPLETED;
+    recheck.captureId = captureId;
+    recheck.completedAt = new Date();
+    event.status = EVENT_STATUS.RECHECKED;
+    event.updatedAt = new Date();
+    return { recheckId, captureId };
+  }
+
+  const eventRef = eventDoc(uid, eventId);
+  const captureRef = doc(db, "users", uid, "v9Events", eventId, "captures", captureId);
+  const recheckRef = doc(db, "users", uid, "v9Events", eventId, "rechecks", recheckId);
+
+  return runTransaction(db, async (tx) => {
+    const [recheckSnap, captureSnap] = await Promise.all([tx.get(recheckRef), tx.get(captureRef)]);
+    if (!recheckSnap.exists() || !captureSnap.exists()) return null;
+    if (recheckSnap.data().status === RECHECK_STATUS.COMPLETED) return null; // 이미 완료 → 중복 실행 무시
+
+    if (captureSnap.data().symptomSnapshot == null) {
+      tx.update(captureRef, { symptomSnapshot: symptomSnapshot ?? null });
+    }
+    tx.update(recheckRef, {
+      status: RECHECK_STATUS.COMPLETED,
+      captureId,
+      completedAt: serverTimestamp(),
+    });
+    tx.update(eventRef, { status: EVENT_STATUS.RECHECKED, updatedAt: serverTimestamp() });
+    return { recheckId, captureId };
+  });
 }
 
 export async function skipRecheck(uid, eventId, recheckId) {

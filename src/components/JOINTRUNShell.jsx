@@ -18,7 +18,7 @@ import { useV9Repository } from "../hooks/useV9Repository";
 import { shouldShowQaTools, FEATURE_FLAGS } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
 import HomeAgendaCard from "./v9/HomeAgendaCard";
-import BaselineAngleFlow from "./v9/BaselineAngleFlow";
+import AngleObservationFlow from "./v9/AngleObservationFlow";
 import SymptomSnapshotForm from "./v9/SymptomSnapshotForm";
 import { V9_ANALYTICS_EVENTS } from "../lib/v9EventTypes";
 import EventMarkerModal from "./EventMarkerModal";
@@ -298,7 +298,7 @@ useEffect(() => {
   // 기존 AI코치·커뮤니티 탭은 없애지 않고 PROFILE 화면 안의 진입점으로 재배치했다(기능 자체는 유지).
   const TAB_CONFIG = [
     { id: "home", icon: Compass, label: "홈" },
-    { id: "scan", icon: Camera, label: "모션스캔", fab: true },
+    { id: "scan", icon: Camera, label: "기록하기", fab: true },
     { id: "timeline", icon: TrendingUp, label: "타임라인" },
     { id: "report", icon: Activity, label: "리포트" },
     { id: "profile", icon: User, label: "프로필" },
@@ -440,37 +440,43 @@ useEffect(() => {
                     </button>
                   </div>
                 )}
-                {scanCount === null ? (
-                  <HomeSkeleton />
-                ) : scanCount === 0 ? (
-                  <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
-                ) : (
-                <div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                    <div>
-                      <div style={{fontSize:11,color:"#94a3b8"}}>환영합니다!</div>
-                      <div style={{fontSize:16,fontWeight:900,color:"#0f172a"}}>{currentProfile.name} 님</div>
-                    </div>
-                    <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#ea580c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
-                      <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
-                    </div>
-                  </div>
-                  {scanCount === 1 ? (
-                    <>
-                      {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
-                      <button onClick={() => setActiveTab("scan")}
-                        style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
-                        <Camera style={{width:14,height:14}} />30초 스캔 시작하기
-                      </button>
-                      <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
-                      <div style={{marginTop:12}}>
-                        <RecentTimelinePreview setActiveTab={setActiveTab} />
-                      </div>
-                    </>
+                {/* RC1.2.1 §5 — production 기본(absoluteScoreUiEnabled=false)에서는 레거시 Home 요소
+                    (연속 사용 일수, 30초 스캔, 체크인·회복 미션, 점수 중심 Home)를 렌더링하지 않는다.
+                    일반 사용자는 위의 agenda 기반 V10 Home 카드만 사용한다. 기존 데이터는 삭제하지 않고
+                    아래 레거시 블록(내부 flag)에서만 읽는다. */}
+                {FEATURE_FLAGS.absoluteScoreUiEnabled && (
+                  scanCount === null ? (
+                    <HomeSkeleton />
+                  ) : scanCount === 0 ? (
+                    <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
                   ) : (
-                    <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
-                  )}
-                </div>
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                      <div>
+                        <div style={{fontSize:11,color:"#94a3b8"}}>환영합니다!</div>
+                        <div style={{fontSize:16,fontWeight:900,color:"#0f172a"}}>{currentProfile.name} 님</div>
+                      </div>
+                      <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#ea580c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
+                        <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
+                      </div>
+                    </div>
+                    {scanCount === 1 ? (
+                      <>
+                        {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
+                        <button onClick={() => setActiveTab("scan")}
+                          style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                          <Camera style={{width:14,height:14}} />30초 스캔 시작하기
+                        </button>
+                        <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                        <div style={{marginTop:12}}>
+                          <RecentTimelinePreview setActiveTab={setActiveTab} />
+                        </div>
+                      </>
+                    ) : (
+                      <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                    )}
+                  </div>
+                  )
                 )}
                 </>
               )}
@@ -480,7 +486,7 @@ useEffect(() => {
                   <MotionScanPage onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} onGoToNextAction={goToNextAction} currentUser={currentUser} />
                 ) : agenda?.key === "no_baseline" ? (
                   // V10 기본: 각도 관찰으로 첫 기준선을 만든다(Trigger→Hand→Angle→symptom_pending).
-                  <BaselineAngleFlow event={null} onClose={() => setActiveTab("home")} onGoToNextAction={goToNextAction} />
+                  <AngleObservationFlow mode="baseline" event={null} onClose={() => setActiveTab("home")} onGoToNextAction={goToNextAction} />
                 ) : (
                   // 이미 기준선 기록이 있는 경우 — 재측정 대신 타임라인/홈으로 안내.
                   <div style={{ padding: "40px 24px", textAlign: "center" }}>
@@ -564,22 +570,32 @@ useEffect(() => {
         />
       )}
 
-      {/* V9 DECISION LOOP (재확인→비교 또는 선택→결과). 첫 기준선은 BaselineAngleFlow가 담당. */}
-      {decisionLoop && currentUser && (
+      {/* V9 DECISION LOOP — RC1.2.1부터 재확인도 AngleObservationFlow가 맡고, 여기는 선택→결과(decision)만 담당. */}
+      {decisionLoop && decisionLoop.mode === "decision" && currentUser && (
         <DecisionLoopFlow
-          mode={decisionLoop.mode}
+          mode="decision"
           event={activeEvent}
-          recheck={decisionLoop.recheck}
           onClose={() => setDecisionLoop(null)}
           onCompleted={() => { refreshAgenda(); triggerFeedback("기록이 저장되었습니다."); }}
           simulateNetworkError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
-          forceMockCapture={shouldShowQaTools(currentUser) ? qaUseMockCapture : undefined}
+        />
+      )}
+
+      {/* RC1.2.1 — 재확인도 기준선과 같은 각도 관찰 프로토콜을 쓴다(같은 손 확인→각도→증상→비교). */}
+      {decisionLoop && decisionLoop.mode === "recheck" && currentUser && (
+        <AngleObservationFlow
+          mode="recheck"
+          event={activeEvent}
+          recheck={decisionLoop.recheck}
+          onClose={() => { setDecisionLoop(null); refreshAgenda(); }}
+          onCompleted={() => { refreshAgenda(); triggerFeedback("재확인 기록이 저장되었습니다."); }}
         />
       )}
 
       {/* RC1.2 — V10 첫 기준선 각도 관찰 흐름(Trigger→Hand→Angle→symptom_pending) */}
       {baselineFlow && currentUser && (
-        <BaselineAngleFlow
+        <AngleObservationFlow
+          mode="baseline"
           event={activeEvent}
           onClose={() => { setBaselineFlow(false); refreshAgenda(); }}
           onGoToNextAction={goToNextAction}

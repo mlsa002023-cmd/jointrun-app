@@ -70,12 +70,16 @@ export function getHomeAgendaState(event, now = new Date()) {
   const week2 = event.rechecks?.find((r) => r.dueType === "week2");
   const week4 = event.rechecks?.find((r) => r.dueType === "week4");
 
+  // RC1.2.1 §3 — "unverified"(비교 조건 미검증)는 경고가 아니다. 실제로 검증해서 부적합으로
+  // 판정된 경우(unreliable)와 legacy의 비-pass만 경고한다.
+  const isUnreliable = (v) => v === "unreliable" || (v != null && v !== "pass" && v !== "unverified");
   const qualityWarning = (() => {
-    if (event.baselineQualityStatus && event.baselineQualityStatus !== "pass") {
+    const baselineQuality = event.baselineComparisonQualityStatus ?? event.baselineQualityStatus;
+    if (isUnreliable(baselineQuality)) {
       return "기준선 촬영 조건이 불안정하게 저장됐어요. 다음 재확인 때는 조건을 맞춰 다시 촬영해보세요.";
     }
     const lastCompletedRecheck = [week4, week2].find((r) => r?.status === "completed");
-    if (lastCompletedRecheck && lastCompletedRecheck.qualityStatus && lastCompletedRecheck.qualityStatus !== "pass") {
+    if (lastCompletedRecheck && isUnreliable(lastCompletedRecheck.comparisonQualityStatus ?? lastCompletedRecheck.qualityStatus)) {
       return "지난 재확인 촬영 조건이 불안정했어요. 이번엔 조건을 맞춰 다시 촬영해보세요.";
     }
     return null;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { FEATURE_FLAGS, MOCK_CAPTURE_ENABLED, shouldShowQaTools, isQaModeActiveForUser } from "./featureFlags";
+import { FEATURE_FLAGS, MOCK_CAPTURE_ENABLED, isQaModeActiveForUser, evaluateQaAccess } from "./featureFlags";
 
 describe("FEATURE_FLAGS — production 기본값", () => {
   it("absoluteScoreUiEnabled는 환경변수를 설정하지 않으면 false다(테스트 환경 = 배포 환경과 동일 조건)", () => {
@@ -16,9 +16,26 @@ describe("FEATURE_FLAGS — production 기본값", () => {
     expect(MOCK_CAPTURE_ENABLED).toBe(false);
   });
 
-  it("VITE_QA_MODE_ENABLED를 설정하지 않으면 QA 도구는 어떤 계정에도 보이지 않는다", () => {
+  it("VITE_QA_MODE_ENABLED를 설정하지 않으면 어떤 계정도 QA(Preview) 조건을 만족하지 못한다", () => {
     expect(isQaModeActiveForUser({ email: "ceo@jointrun.app" })).toBe(false);
-    expect(shouldShowQaTools({ email: "ceo@jointrun.app" })).toBe(false);
+  });
+});
+
+describe("RC1.2.1 §4 — QA 접근 fail-closed (evaluateQaAccess)", () => {
+  const email = "ceo@jointrun.app";
+  it("QA 모드가 꺼져 있으면 false", () => {
+    expect(evaluateQaAccess({ qaModeEnabled: false, allowedEmails: [email], userEmail: email })).toBe(false);
+  });
+  it("QA 모드가 켜져도 allowlist가 비어 있으면 아무에게도 false(fail-closed)", () => {
+    expect(evaluateQaAccess({ qaModeEnabled: true, allowedEmails: [], userEmail: email })).toBe(false);
+    expect(evaluateQaAccess({ qaModeEnabled: true, allowedEmails: undefined, userEmail: email })).toBe(false);
+  });
+  it("allowlist에 없는 이메일은 false", () => {
+    expect(evaluateQaAccess({ qaModeEnabled: true, allowedEmails: [email], userEmail: "someone@else.com" })).toBe(false);
+    expect(evaluateQaAccess({ qaModeEnabled: true, allowedEmails: [email], userEmail: "" })).toBe(false);
+  });
+  it("QA 모드 ON + allowlist 포함 이메일만 true(대소문자 무시)", () => {
+    expect(evaluateQaAccess({ qaModeEnabled: true, allowedEmails: [email], userEmail: "CEO@jointrun.app" })).toBe(true);
   });
 });
 

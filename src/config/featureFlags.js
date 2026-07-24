@@ -53,13 +53,24 @@ export const FEATURE_FLAGS_QA = {
   qaModeEnabled: RAW_QA_MODE_ENABLED,
 };
 
-// 현재 로그인한 사용자에게 QA 도구를 보여줘도 되는지 판단한다.
-// user는 AuthContext의 currentUser(파이어베이스 User 객체 또는 데모 사용자)를 그대로 전달한다.
+// RC1.2.1 §4 — QA 접근 판단을 순수 함수로 분리(테스트 용이). fail-closed:
+//   - QA 모드가 꺼져 있으면 false
+//   - allowlist가 비어 있으면(설정 누락) 아무에게도 false — "비면 전원 허용"을 폐기
+//   - allowlist에 로그인 이메일이 포함되어야만 true
+export function evaluateQaAccess({ qaModeEnabled, allowedEmails, userEmail }) {
+  if (!qaModeEnabled) return false;
+  if (!allowedEmails || allowedEmails.length === 0) return false; // fail-closed
+  const email = (userEmail || "").toLowerCase();
+  return Boolean(email && allowedEmails.includes(email));
+}
+
+// 현재 로그인한 사용자가 QA(Preview) 조건을 만족하는지. user는 AuthContext의 currentUser.
 export function isQaModeActiveForUser(user) {
-  if (!RAW_QA_MODE_ENABLED) return false;
-  if (QA_ALLOWED_EMAILS.length === 0) return true;
-  const email = user?.email?.toLowerCase();
-  return Boolean(email && QA_ALLOWED_EMAILS.includes(email));
+  return evaluateQaAccess({
+    qaModeEnabled: RAW_QA_MODE_ENABLED,
+    allowedEmails: QA_ALLOWED_EMAILS,
+    userEmail: user?.email,
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -76,11 +87,12 @@ export const MOCK_CAPTURE_ENABLED =
   (import.meta.env.DEV === true && readBooleanEnv("VITE_ENABLE_MOCK_CAPTURE", false)) ||
   RAW_QA_MODE_ENABLED;
 
-// 실제 화면에 QA 도구(Mock Capture 버튼, 시점 이동, 오류 시뮬레이션, 기록 초기화)를
-// 렌더링해도 되는지의 최종 판단. 로컬 개발(DEV)에서는 계정 구분 없이 기존처럼 동작하고,
-// 빌드된 배포본(Preview)에서는 로그인한 계정이 allowlist를 통과해야만 true가 된다.
+// 실제 화면에 QA 도구(Mock Capture, 시점 이동, 오류 시뮬레이션, 기록 초기화, 각도 시뮬레이션,
+// DEBUG 오버레이)를 렌더링해도 되는지의 최종 판단.
+//   - 로컬 개발(import.meta.env.DEV)은 계정 구분 없이 항상 허용(개발 편의).
+//   - 그 외(Preview/Production 빌드)는 QA 모드 ON + allowlist 통과(fail-closed)여야만 허용.
+// production 빌드는 DEV=false + QA 모드 미설정이므로 어떤 사용자에게도 false다.
 export function shouldShowQaTools(user) {
-  if (!MOCK_CAPTURE_ENABLED) return false;
   if (import.meta.env.DEV === true) return true;
   return isQaModeActiveForUser(user);
 }

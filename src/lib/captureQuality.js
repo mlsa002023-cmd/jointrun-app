@@ -100,14 +100,21 @@ export function evaluateCaptureQuality({ distance, framing, shake, lighting }) {
  * qualityStatus가 "pass"인 캡처만 정상 개인 기준선/재확인/Scan Completion 유효 결과로 센다.
  * "그대로 저장하기"로 강제 저장된 캡처(unreliable)는 기록 자체는 보존하되, 이 함수가 false를
  * 반환하는 모든 곳(홈 안내, 비교 신뢰도, KPI 집계 대상)에서 정상 기록과 구분되어야 한다.
+ *
+ * RC1.2.1 §3 — 신규 capture는 comparisonQualityStatus를 쓴다. "unverified"(비교 조건 미검증)는
+ * "불안정(unreliable)"이 아니다 — 아직 판정하지 않았을 뿐이므로 경고 대상이 아니다.
  */
 export function isReliableCapture(capture) {
+  if (capture?.comparisonQualityStatus != null) return capture.comparisonQualityStatus !== "unreliable";
   return capture?.qualityStatus === "pass";
 }
 
 /**
  * S09 "과거의 나와 비교" — 기준선과 현재 촬영을 나란히 볼 수 있는 조건인지 판정한다.
  * 자동으로 좋아짐/나빠짐을 판정하지 않는다 — 조건 일치 여부만 본다(그 다음은 사용자 보고).
+ *
+ * RC1.2.1 — 비교 조건을 아직 검증하지 않은(unverified) 기록은 "비교 불가"로 막지 않되,
+ * "검증되지 않았다"는 사실은 별도 사유로 알려준다(사실과 다른 안심/경고를 모두 피한다).
  */
 export function evaluateComparability(baselineCapture, currentCapture) {
   const reasons = [];
@@ -115,7 +122,10 @@ export function evaluateComparability(baselineCapture, currentCapture) {
   if (baselineCapture.handSide !== currentCapture.handSide) reasons.push("hand_side_mismatch");
   if (!isReliableCapture(currentCapture)) reasons.push("current_quality_unreliable");
   if (!isReliableCapture(baselineCapture)) reasons.push("baseline_quality_unreliable");
-  return { comparable: reasons.length === 0, reasons };
+
+  const unverified = [baselineCapture, currentCapture]
+    .some((c) => c?.comparisonQualityStatus === "unverified");
+  return { comparable: reasons.length === 0, reasons, comparisonQualityUnverified: unverified };
 }
 
 /**

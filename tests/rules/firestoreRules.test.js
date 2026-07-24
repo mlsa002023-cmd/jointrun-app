@@ -9,7 +9,8 @@ import { beforeAll, afterAll, beforeEach, describe, it } from "vitest";
 import {
   initializeTestEnvironment, assertSucceeds, assertFails, RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, collection, addDoc, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc, deleteDoc, getDocs, runTransaction } from "firebase/firestore";
+import { expect } from "vitest";
 
 const PROJECT_ID = "demo-jointrun-rules-test";
 /** @type {RulesTestEnvironment} */
@@ -90,6 +91,24 @@ describe("v9Events — 본인 접근", () => {
     const db = testEnv.authenticatedContext(uid).firestore();
     const ref = doc(db, "users", uid, "v9Events", "evt1");
     await assertSucceeds(setDoc(ref, validEvent));
+    await assertSucceeds(setDoc(ref, { ...validEvent, status: "symptom_pending" }));
+  });
+
+  // RC1.2.1 §6 — 증상 기록 없이 곧바로 기준선을 확정하는 경로를 서버에서 막는다.
+  it("draft에서 baseline_created로 곧바로 전환하는 것은 거부된다(symptom_pending 경유 필수)", async () => {
+    const uid = "user-a";
+    const db = testEnv.authenticatedContext(uid).firestore();
+    const ref = doc(db, "users", uid, "v9Events", "evt-direct");
+    await assertSucceeds(setDoc(ref, validEvent)); // draft
+    await assertFails(setDoc(ref, { ...validEvent, status: "baseline_created" }));
+  });
+
+  it("symptom_pending에서 baseline_created로의 전환은 허용된다", async () => {
+    const uid = "user-a";
+    const db = testEnv.authenticatedContext(uid).firestore();
+    const ref = doc(db, "users", uid, "v9Events", "evt-ok");
+    await assertSucceeds(setDoc(ref, validEvent));
+    await assertSucceeds(setDoc(ref, { ...validEvent, status: "symptom_pending" }));
     await assertSucceeds(setDoc(ref, { ...validEvent, status: "baseline_created" }));
   });
 });
@@ -308,5 +327,98 @@ describe("하위 컬렉션(captures/rechecks/comparisons) — 동일 원칙 적�
     const decisionRef = await assertSucceeds(addDoc(decisionsCol, validDecision));
     await assertFails(setDoc(doc(db, "users", uid, "v9Events", "evt1", "decisions", decisionRef.id), validDecision));
     await assertFails(deleteDoc(doc(db, "users", uid, "v9Events", "evt1", "decisions", decisionRef.id)));
+  });
+});
+
+// ─────────────────────────────────────────────
+// RC1.2.1 §1/§7 — 기준선 확정 원자성(transaction) 검증.
+// 에뮬레이터의 실제 transaction 의미론으로 rollback·재시도·중복 없음을 확인한다.
+// ─────────────────────────────────────────────
+describe("RC1.2.1 — 기준선 확정 transaction 원자성", () => {
+  const uid = "user-tx";
+  const eventId = "evt-tx";
+  const captureId = "cap-tx";
+
+  const angleCapture = {
+    schemaVersion: "v1.0",
+    eventId,
+    type: "baseline",
+    handSide: "right",
+    perFingerObservedRomDeg: [{ key: "index", name: "검지", romDeg: 118 }],
+    averageObservedRomDeg: 122,
+    recordingStatus: "completed",
+    comparisonQualityStatus: "unverified",
+    qualityFlags: [],
+    symptomSnapshot: null,
+    capturedAt: new Date("2026-07-01T09:00:00Z"),
+  };
+
+  async function seed(db) {
+    await setDoc(doc(db, "users", uid, "v9Events", eventId), { ...validEvent, status: "symptom_pending", baselineCaptureId: captureId });
+    await setDoc(doc(db, "users", uid, "v9Events", eventId, "captures", captureId), angleCapture);
+  }
+
+  // 프로덕션 코드와 동일한 구조의 transaction(결정적 recheck ID + symptom_pending 가드).
+  async function confirmBaselineTx(db, { failBeforeCommit = false } = {}) {
+    const eventRef = doc(db, "users", uid, "v9Events", eventId);
+    const captureRef = doc(db, "users", uid, "v9Events", eventId, "captures", captureId);
+    const week2Ref = doc(db, "users", uid, "v9Events", eventId, "rechecks", `week2-${captureId}`);
+    const week4Ref = doc(db, "users", uid, "v9Events", eventId, "rechecks", `week4-${captureId}`);
+    return runTransaction(db, async (tx) => {
+      const eventSnap = await tx.get(eventRef);
+      const captureSnap = await tx.get(captureRef);
+      if (eventSnap.data().status !== "symptom_pending") return null; // 중복 확정 방지
+      const capturedAt = captureSnap.data().capturedAt.toDate();
+      const week2DueAt = new Date(capturedAt.getTime() + 14 * 86400000);
+      const week4DueAt = new Date(capturedAt.getTime() + 28 * 86400000);
+      tx.update(captureRef, { symptomSnapshot: { painSelfReport: 5 } });
+      tx.update(eventRef, { status: "baseline_created", baselineCaptureId: captureId });
+      tx.set(week2Ref, { schemaVersion: "v1.0", dueType: "week2", dueAt: week2DueAt, status: "scheduled", captureId: null, completedAt: null });
+      // week2 생성 직후 실패시켜 rollback을 검증한다(§7 "week2 생성 실패 시 전체 rollback").
+      if (failBeforeCommit) throw new Error("simulated failure after week2 write");
+      tx.set(week4Ref, { schemaVersion: "v1.0", dueType: "week4", dueAt: week4DueAt, status: "scheduled", captureId: null, completedAt: null });
+      return { week2DueAt, week4DueAt };
+    });
+  }
+
+  it("중간 실패 시 전체 rollback — capture 증상·Event 상태·week2가 모두 원복된다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seed(db);
+    await expect(confirmBaselineTx(db, { failBeforeCommit: true })).rejects.toThrow();
+
+    const eventSnap = await getDoc(doc(db, "users", uid, "v9Events", eventId));
+    const captureSnap = await getDoc(doc(db, "users", uid, "v9Events", eventId, "captures", captureId));
+    const rechecks = await getDocs(collection(db, "users", uid, "v9Events", eventId, "rechecks"));
+    expect(eventSnap.data().status).toBe("symptom_pending"); // 전환 안 됨
+    expect(captureSnap.data().symptomSnapshot).toBeNull();   // 증상 안 붙음
+    expect(rechecks.size).toBe(0);                            // week2도 남지 않음
+  });
+
+  it("실패 후 재시도하면 성공하고, capturedAt 기준으로 2주·4주 일정이 생성된다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seed(db);
+    await expect(confirmBaselineTx(db, { failBeforeCommit: true })).rejects.toThrow();
+    await confirmBaselineTx(db); // 재시도 성공
+
+    const eventSnap = await getDoc(doc(db, "users", uid, "v9Events", eventId));
+    const captureSnap = await getDoc(doc(db, "users", uid, "v9Events", eventId, "captures", captureId));
+    const rechecks = await getDocs(collection(db, "users", uid, "v9Events", eventId, "rechecks"));
+    expect(eventSnap.data().status).toBe("baseline_created");
+    expect(captureSnap.data().symptomSnapshot.painSelfReport).toBe(5);
+    expect(rechecks.size).toBe(2);
+    const byType = Object.fromEntries(rechecks.docs.map((d) => [d.data().dueType, d.data()]));
+    // capturedAt(7/1) 기준 +14일 = 7/15, +28일 = 7/29
+    expect(byType.week2.dueAt.toDate().toISOString().slice(0, 10)).toBe("2026-07-15");
+    expect(byType.week4.dueAt.toDate().toISOString().slice(0, 10)).toBe("2026-07-29");
+  });
+
+  it("중복 실행해도 Recheck는 2건을 넘지 않는다(결정적 ID + symptom_pending 가드)", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seed(db);
+    await confirmBaselineTx(db);
+    const second = await confirmBaselineTx(db); // 이미 baseline_created → no-op
+    expect(second).toBeNull();
+    const rechecks = await getDocs(collection(db, "users", uid, "v9Events", eventId, "rechecks"));
+    expect(rechecks.size).toBe(2);
   });
 });

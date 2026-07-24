@@ -24,10 +24,13 @@ vi.mock("../lib/analytics", () => ({ trackKpiEvent: (...a) => trackKpiEvent(...a
 
 // FEATURE_FLAGS는 테스트에서 flag를 뒤집을 수 있도록 hoisted 목으로 제공.
 const { mockFlags } = vi.hoisted(() => ({ mockFlags: { absoluteScoreUiEnabled: false, pricingExperiment: false } }));
+// RC1.2.1 §4 — QA gate는 테스트에서 전환할 수 있어야 한다. 기본은 허용(시뮬레이션으로 완료 화면
+// 진입이 필요하기 때문)이고, "일반 사용자에게 QA 도구가 안 보인다"는 별도 테스트에서 false로 바꾼다.
+const { mockQa } = vi.hoisted(() => ({ mockQa: { allowed: true } }));
 vi.mock("../config/featureFlags", () => ({
   FEATURE_FLAGS: mockFlags,
   MOCK_CAPTURE_ENABLED: false,
-  shouldShowQaTools: () => false,
+  shouldShowQaTools: () => mockQa.allowed,
 }));
 
 import MotionScanPage from "./MotionScanPage";
@@ -68,6 +71,7 @@ async function enterCompleted() {
 beforeEach(() => {
   trackKpiEvent.mockClear();
   mockFlags.absoluteScoreUiEnabled = false;
+  mockQa.allowed = true;
 });
 
 describe("MotionScanPage 완료 화면 — P0 UX 보정", () => {
@@ -179,7 +183,8 @@ describe("MotionScanPage captureMode(RC1.2 각도 관찰) — production 기본"
     expect(screen.queryByText("VAS")).toBeNull();
     expect(screen.queryByText(/Finger Score/i)).toBeNull();
     expect(screen.queryByText(/관찰:/)).toBeNull();
-    expect(screen.queryByText("DEBUG")).toBeNull(); // qaAllowed=false(mock)
+    // DEBUG 토글은 촬영(scanning) 화면에만 있고 완료 화면에는 없다.
+    expect(screen.queryByText("DEBUG")).toBeNull();
     // 관찰값 + 사용 손 + 품질 문구
     expect(screen.getByText("관찰된 손가락 각도")).toBeInTheDocument();
     expect(screen.getByText("사용 손")).toBeInTheDocument();
@@ -216,5 +221,15 @@ describe("MotionScanPage captureMode(RC1.2 각도 관찰) — production 기본"
     await act(async () => { resolve(); });
     const next = await screen.findByRole("button", { name: "다음 단계로 이동" });
     expect(next).not.toBeDisabled();
+  });
+
+  // RC1.2.1 §4 — QA gate를 통과하지 못한 사용자(production 일반 사용자)에게는
+  // 각도 시뮬레이션 진입점이 아예 렌더링되지 않는다.
+  it("QA gate 미통과 사용자에게는 시뮬레이션 버튼이 0건이다", async () => {
+    mockQa.allowed = false;
+    renderCapture();
+    expect(await screen.findByText("관찰 기록 시작")).toBeInTheDocument();
+    expect(screen.queryByText("시뮬레이션으로 건너뛰기")).toBeNull();
+    expect(screen.queryByText("DEBUG")).toBeNull();
   });
 });
