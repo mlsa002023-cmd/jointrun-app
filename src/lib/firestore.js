@@ -37,8 +37,10 @@ export async function saveScanRecord(uid, { metrics, scores, rawFrames, recommen
     }
     return ref.id;
   } catch (e) {
+    // 실제 저장 실패는 삼키지 않고 호출부로 전파한다 — 완료 화면의 "다음 단계로" 저장
+    // 게이트가 성공/실패를 구분해야 하기 때문(P0 UX: 저장 성공 전 홈 이동 불가).
     console.warn("saveScanRecord 실패:", e);
-    return null;
+    throw e;
   }
 }
 

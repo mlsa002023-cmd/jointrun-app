@@ -13,12 +13,13 @@
 // ─────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RefreshCw, Sparkles, Compass, Check } from "lucide-react";
+import { Camera, RefreshCw, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
 import { FEATURE_FLAGS } from "../config/featureFlags";
+import { trackKpiEvent } from "../lib/analytics";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -91,7 +92,7 @@ function clearCanvas(canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-export default function MotionScanPage({ currentProfile, onScanCompleted, triggerFeedback, setActiveTab }) {
+export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoToNextAction, currentUser }) {
   const cameraRef = useRef(null);
   const rafRef = useRef(null);
   const finishScanRef = useRef(null); // 4단계에서 실제 함수를 채워 넣을 자리
@@ -119,8 +120,12 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
   const debugVisibleRef = useRef(debugVisible);
   useEffect(() => { debugVisibleRef.current = debugVisible; }, [debugVisible]);
   const [history, setHistory] = useState([]);
-  const [justSaved, setJustSaved] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  // 저장 게이트 상태머신 — idle → saving → saved | error. "다음 단계로" 버튼은 saved에서만 활성.
+  const [saveState, setSaveState] = useState("idle");
+  const scanPayloadRef = useRef(null); // 저장 실패 시 재시도를 위해 결과 payload를 보존
+  const savingRef = useRef(false);     // 중복 저장(동시 실행) 차단
+  const nextClickedRef = useRef(false); // "다음 단계로" 중복 클릭 차단
   const [poseIndex, setPoseIndex] = useState(0);
   const [poseSecondsLeft, setPoseSecondsLeft] = useState(POSE_GUIDE[0].duration);
   const [poseRetryMsg, setPoseRetryMsg] = useState(null); // "다시 해주세요" 피드백
@@ -350,7 +355,20 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     setErrorMessage(null);
     setHandDetected(false);
     setLiveMetrics(null);
+    setSaveState("idle");
+    scanPayloadRef.current = null;
+    savingRef.current = false;
+    nextClickedRef.current = false;
     setPhase("idle");
+  };
+
+  // "다음 단계로" — 저장이 확인된 뒤(saved)에만 동작한다. 중복 클릭을 막고, 홈으로 이동해
+  // agenda 카드로 focus/scroll하도록 부모에 위임한다. 다음 작업은 홈의 agenda state가 결정한다.
+  const handleGoNext = () => {
+    if (saveState !== "saved" || nextClickedRef.current) return;
+    nextClickedRef.current = true;
+    trackKpiEvent("scan_result_next_clicked", currentUser?.uid);
+    onGoToNextAction?.();
   };
 
   /**
@@ -411,19 +429,47 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         ? `스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`
         : `스캔 완료! ROM: ${avgRom}°`);
 
-      // 부모(JOINTRUNShell)에는 raw/metrics/scanScores로 분리된 신규 스키마를 전달한다.
-      onScanCompleted({
+      // 부모(JOINTRUNShell)로 넘길 payload를 저장만 해두고 실제 전송은 저장 게이트 effect가 담당한다.
+      // (raw/metrics/scanScores로 분리된 신규 스키마)
+      scanPayloadRef.current = {
         metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
         scanScores: { mobility, stability },
         raw: rawFrames,
         recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
-      });
+      };
 
       stopDetectLoop();
+      setSaveState("idle");
       setPhase("completed");
     },
-    [onScanCompleted, triggerFeedback, stopDetectLoop]
+    [triggerFeedback, stopDetectLoop]
   );
+
+  // 저장 게이트 — payload를 부모의 onScanCompleted로 전송하고 성공/실패를 상태로 반영한다.
+  // onScanCompleted는 실제 Firestore 저장이 성공해야 resolve되는 Promise(실패 시 reject).
+  const persistScan = useCallback(async () => {
+    if (savingRef.current || !scanPayloadRef.current) return; // 중복 저장 차단
+    savingRef.current = true;
+    setSaveState("saving");
+    try {
+      await onScanCompleted(scanPayloadRef.current);
+      setSaveState("saved");
+    } catch (err) {
+      console.error("[MotionScanPage] 스캔 저장 실패:", err);
+      setSaveState("error");
+      trackKpiEvent("scan_result_save_failed", currentUser?.uid);
+    } finally {
+      savingRef.current = false;
+    }
+  }, [onScanCompleted, currentUser]);
+
+  // 완료 화면에 진입하면(한 번) 결과 조회 이벤트를 남기고 저장을 시작한다.
+  useEffect(() => {
+    if (phase === "completed" && saveState === "idle" && scanPayloadRef.current) {
+      trackKpiEvent("scan_result_viewed", currentUser?.uid);
+      persistScan();
+    }
+  }, [phase, saveState, persistScan, currentUser]);
 
   // evaluatePoseAndAdvance(3단계)에서 이 ref를 통해 finishScan을 호출한다.
   useEffect(() => {
@@ -447,18 +493,21 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
     };
     setScanResult(simResult);
     triggerFeedback("시뮬레이션 스캔 완료!");
-    setPhase("completed");
 
     const mobility = computeMobilityScore(simFingers.map((f) => ({ rom: f.flexion })));
     const stability = computeStabilityScore(simFingers);
 
-    onScanCompleted({
+    // 실제 스캔과 동일하게 저장 게이트 effect가 처리하도록 payload만 세팅한다.
+    // isSimulated=true라 상위에서 Firebase 저장은 건너뛰고 즉시 resolve → 게이트는 "saved"가 된다.
+    scanPayloadRef.current = {
       metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
       scanScores: { mobility, stability },
       raw: null,
       recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
       isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
-    });
+    };
+    setSaveState("idle");
+    setPhase("completed");
   };
 
   const currentPose = POSE_GUIDE[poseIndex];
@@ -649,49 +698,84 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
         {/* ── completed ── */}
         {phase === "completed" && scanResult && (
           <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/97 p-3">
-            <div className="bg-white border border-blue-200 rounded-2xl p-4 shadow-sm">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+              {/* 상단: 측정 기록 완료 + '다시 측정하기'(보조 액션만). '홈으로'는 하단 Primary CTA로 이동. */}
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5 text-blue-700 text-xs font-bold">
-                  <Sparkles className="w-4 h-4 text-orange-500" />
-                  스캔 분석 완료
+                <div className="flex items-center gap-1.5 text-[#122A5C] text-xs font-bold">
+                  <Check className="w-4 h-4 text-[#1F9E96]" />
+                  측정 기록 완료
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={restart} className="text-[10px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold">
-                    <RefreshCw className="w-3 h-3" /> 다시 측정
-                  </button>
-                  <button onClick={() => setActiveTab?.("home")} className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-1 font-bold">
-                    <Compass className="w-3 h-3" /> 홈으로
-                  </button>
-                </div>
+                <button onClick={restart} aria-label="다시 측정하기" className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold" style={{ minHeight: 44, padding: "0 6px" }}>
+                  <RefreshCw className="w-3 h-3" /> 다시 측정하기
+                </button>
               </div>
-              <div className="grid grid-cols-4 gap-2 mb-3">
-                {scanResult.fingers.map((f) => (
-                  <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-                    <div className="text-[8px] text-slate-400 font-bold">{f.name}</div>
-                    <div className="text-sm font-black text-blue-700 font-mono">{f.score}</div>
-                    <div className="text-[7px] text-slate-400">{Math.round(f.flexion)}°</div>
+
+              {FEATURE_FLAGS.absoluteScoreUiEnabled ? (
+                // ── 내부 flag(absoluteScoreUiEnabled=true)에서만 보이는 레거시 절대점수 뷰 ──
+                // production 기본(false)에서는 렌더링되지 않는다. 기능·계산 로직은 그대로 보존.
+                <>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {scanResult.fingers.map((f) => (
+                      <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                        <div className="text-[8px] text-slate-400 font-bold">{f.name}</div>
+                        <div className="text-sm font-black text-blue-700 font-mono">{f.score}</div>
+                        <div className="text-[7px] text-slate-400">{Math.round(f.flexion)}°</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-                  <div className="text-[8px] text-slate-400">ROM</div>
-                  <div className="text-xs font-black font-mono">{scanResult.romDeg}°</div>
-                </div>
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-                  <div className="text-[8px] text-slate-400">강직지수</div>
-                  <div className="text-xs font-black font-mono">{scanResult.stiffnessMin}분</div>
-                </div>
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-                  <div className="text-[8px] text-slate-400">VAS</div>
-                  <div className="text-xs font-black text-orange-600 font-mono">{scanResult.painIndex}단계</div>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
-                <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled })}
-              </div>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[8px] text-slate-400">ROM</div>
+                      <div className="text-xs font-black font-mono">{scanResult.romDeg}°</div>
+                    </div>
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[8px] text-slate-400">강직지수</div>
+                      <div className="text-xs font-black font-mono">{scanResult.stiffnessMin}분</div>
+                    </div>
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[8px] text-slate-400">VAS</div>
+                      <div className="text-xs font-black text-orange-600 font-mono">{scanResult.painIndex}단계</div>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[10px] text-slate-700 leading-relaxed">
+                    <strong className="text-slate-900">관찰:</strong> {buildRecommendation(scanResult.avgScore, scanResult.romDeg, { includeScoreLabel: true })}
+                  </div>
+                </>
+              ) : (
+                // ── V10 기본 뷰 — 점수·등급·자동추천 없이 "관찰된 값"만 보여준다 ──
+                <>
+                  <p className="text-[11px] font-bold text-slate-500 mb-2">관찰된 손가락 각도</p>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {scanResult.fingers.map((f) => (
+                      <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                        <div className="text-[9px] text-slate-500 font-bold">{f.name}</div>
+                        <div className="text-sm font-black text-[#122A5C] font-mono">{Math.round(f.flexion)}°</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      <div className="text-[9px] text-slate-500">관찰된 ROM(가동 범위)</div>
+                      <div className="text-sm font-black text-[#122A5C] font-mono">{scanResult.romDeg}°</div>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      <div className="text-[9px] text-slate-500">측정 날짜</div>
+                      <div className="text-sm font-black text-[#16213D]">{new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}</div>
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3">
+                    <div className="text-[9px] text-slate-500">촬영 품질</div>
+                    <div className="text-[12px] font-bold text-[#1F9E96]">3개 동작 모두 정상 인식 · 비교 가능</div>
+                  </div>
+                  <div className="bg-[#F4F6FA] border border-[#E1E7EF] p-2.5 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+                    동일한 촬영 조건에서 기록된 관찰값입니다. 질환 진단이나 악화 여부를 의미하지 않습니다.
+                  </div>
+                </>
+              )}
             </div>
-            {history.length > 0 && (
+
+            {/* 최근 스캔 기록은 점수 배지를 쓰므로 절대점수 flag 뒤에만 노출한다. */}
+            {FEATURE_FLAGS.absoluteScoreUiEnabled && history.length > 0 && (
               <div className="bg-white border border-slate-200 rounded-2xl p-3 mt-3">
                 <p className="text-[10px] font-bold text-slate-700 mb-2">최근 스캔 기록 (14회)</p>
                 <div className="flex gap-1 overflow-x-auto">
@@ -713,6 +797,48 @@ export default function MotionScanPage({ currentProfile, onScanCompleted, trigge
           <button onClick={restart} className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all">
             스캔 종료
           </button>
+        </div>
+      )}
+
+      {/* ── 완료 화면 하단 고정 Primary CTA ──
+          스크롤 콘텐츠(위)와 겹치지 않는 형제 요소라 항상 보인다. 저장이 확인된(saved) 뒤에만
+          '다음 단계로'가 활성화되고, 저장 실패 시에는 홈으로 넘어가지 않고 재시도를 노출한다.
+          모바일 safe-area-inset-bottom 반영, 버튼 최소 높이 56px. */}
+      {phase === "completed" && (
+        <div style={{ background: "#FFFFFF", borderTop: "1px solid #E1E7EF", padding: "12px 16px calc(12px + env(safe-area-inset-bottom))" }}>
+          {saveState === "error" ? (
+            <>
+              <p role="alert" style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#B3462E", lineHeight: 1.5 }}>
+                저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요. (측정 결과는 그대로 보관됩니다)
+              </p>
+              <button
+                type="button"
+                onClick={persistScan}
+                aria-label="측정 결과 다시 저장"
+                className="jt-primary-cta"
+                style={{ width: "100%", minHeight: 56, background: "#B3462E", color: "white", border: "none", borderRadius: 14, fontSize: 16, fontWeight: 800, cursor: "pointer" }}
+              >
+                다시 저장
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGoNext}
+              disabled={saveState !== "saved"}
+              aria-busy={saveState === "saving"}
+              aria-label={saveState === "saving" ? "저장 중입니다" : "다음 단계로 이동"}
+              className="jt-primary-cta"
+              style={{
+                width: "100%", minHeight: 56, border: "none", borderRadius: 14, fontSize: 16, fontWeight: 800,
+                color: "white",
+                background: saveState === "saved" ? "#122A5C" : "#B9C1D4",
+                cursor: saveState === "saved" ? "pointer" : "default",
+              }}
+            >
+              {saveState === "saving" ? "저장 중…" : "다음 단계로"}
+            </button>
+          )}
         </div>
       )}
     </div>

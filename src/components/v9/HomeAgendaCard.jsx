@@ -5,6 +5,10 @@
 //
 // 기준선 날짜는 이벤트에 별도 필드로 저장하지 않으므로 week2 예정일에서 14일을 빼서 유도한다
 // (computeRecheckDueDates가 기준선 + 14일 = week2라는 규칙을 쓰기 때문에 역산이 정확하다).
+//
+// focusSignal: 측정 완료 화면의 "다음 단계로"에서 홈으로 넘어온 직후, 이 카드로 scroll·focus·강조를
+// 유도하기 위한 nonce. 값이 바뀔 때마다 한 번 스크롤·포커스하고 잠깐 강조 테두리를 보여준다.
+import { useEffect, useRef, useState } from "react";
 import { RECHECK_INTERVAL_DAYS } from "../../lib/recheckSchedule";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -20,7 +24,9 @@ function fmtShort(date) {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-export default function HomeAgendaCard({ agenda, children }) {
+export default function HomeAgendaCard({ agenda, focusSignal = 0, onFocused, children }) {
+  const cardRef = useRef(null);
+  const [highlight, setHighlight] = useState(false);
   const recheck = agenda?.recheck;
   const dueAt = toDate(recheck?.dueAt);
   const baselineAt = dueAt && recheck?.dueType
@@ -38,8 +44,37 @@ export default function HomeAgendaCard({ agenda, children }) {
 
   const dueLabel = recheck?.dueType === "week4" ? "4주" : "2주";
 
+  // focusSignal이 올라오면(측정 완료 → 다음 단계로) 카드로 스크롤·포커스하고 잠깐 강조한다.
+  useEffect(() => {
+    if (!focusSignal) return;
+    const el = cardRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // 스크롤 애니메이션 도중 포커스가 화면을 다시 튀게 하지 않도록 preventScroll.
+    try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+    setHighlight(true);
+    onFocused?.();
+    const t = setTimeout(() => setHighlight(false), 1600);
+    return () => clearTimeout(t);
+  }, [focusSignal, onFocused]);
+
   return (
-    <div style={{ background: "white", border: "1px solid #E1E7EF", borderRadius: 18, padding: "20px 18px", marginBottom: 12 }}>
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      aria-label="지금 필요한 기록"
+      style={{
+        background: "white",
+        border: `1px solid ${highlight ? "#1F9E96" : "#E1E7EF"}`,
+        boxShadow: highlight ? "0 0 0 3px rgba(31,158,150,0.22)" : "none",
+        transition: "box-shadow 0.3s ease, border-color 0.3s ease",
+        borderRadius: 18,
+        padding: "20px 18px",
+        marginBottom: 12,
+        outline: "none",
+        scrollMarginTop: 12,
+      }}
+    >
       <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#5B6478" }}>지금 필요한 기록</p>
       <h2 style={{ margin: "6px 0 0", fontSize: 20, fontWeight: 900, color: "#16213D", lineHeight: 1.35, letterSpacing: "-0.02em" }}>
         {agenda.label}

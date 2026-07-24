@@ -105,3 +105,9 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
+
+/* 측정 완료 화면 하단 Primary CTA — 키보드 포커스가 뚜렷하게 보이도록. */
+.jt-primary-cta:focus-visible {
+  outline: 3px solid #6FD8CC;
+  outline-offset: 2px;
+}

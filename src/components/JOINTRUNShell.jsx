@@ -181,6 +181,8 @@ useEffect(() => {
   }, [currentUser?.uid]);
 
   const [activeTab, setActiveTab] = useState("home");
+  // 측정 완료 화면의 "다음 단계로" → 홈 이동 후 agenda 카드를 scroll·focus·강조하기 위한 신호(nonce).
+  const [agendaFocusSignal, setAgendaFocusSignal] = useState(0);
   const [showEventMarker, setShowEventMarker] = useState(false);
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
@@ -196,7 +198,20 @@ useEffect(() => {
     setTimeout(() => setFeedbackMsg(null), 2500);
   }, []);
 
-  const handleScanCompleted = (payload) => {
+  // 측정 완료 화면의 "다음 단계로" 동작. 다음 작업을 하드코딩하지 않는다 — 홈으로 이동하고
+  // agenda 상태를 다시 계산한 뒤, 홈 최상단 "지금 필요한 기록" 카드를 scroll·focus·강조만 한다.
+  // 어떤 작업으로 이어질지는 전적으로 agenda state(recheckSchedule.js)가 결정한다.
+  const goToNextAction = useCallback(async () => {
+    setActiveTab("home");
+    await refreshAgenda();
+    // 홈 콘텐츠가 마운트/갱신된 다음 프레임에 카드가 자기 자신을 scroll·focus하도록 신호를 올린다.
+    setAgendaFocusSignal((n) => n + 1);
+  }, [refreshAgenda]);
+
+  // async — 실제 스캔 저장의 성공을 await로 확인해 Promise를 반환한다. MotionScanPage의
+  // "다음 단계로" 버튼은 이 Promise가 resolve된 뒤에만 활성화된다(P0 UX 게이트).
+  // 저장이 실패하면 throw가 그대로 전파되어 완료 화면이 오류 상태로 남고 홈 이동을 막는다.
+  const handleScanCompleted = async (payload) => {
     const { metrics, scanScores, raw, recommendation, isSimulated } = payload;
     // Mobility/Stability는 이번 스캔의 실측값, Inflammation/Recovery는 가장 최근 컨디션 체크인 값과 결합한다.
     setLastScanScores(scanScores);
@@ -219,8 +234,12 @@ useEffect(() => {
     addOptimisticScan(healthScore);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     // 시뮬레이션 결과는 어떤 경우에도 Firebase에 저장하지 않는다(P0 안전 요건 — 실제 기록과 섞임 방지).
+    // 데모 모드(Firebase 미설정)에서는 saveScanRecord가 즉시 null을 반환하며 throw하지 않으므로
+    // 저장 게이트는 자연히 "성공"으로 통과한다(로컬 흐름 검증용).
     if (currentUser && !isSimulated) {
-      saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
+      // 스캔 기록 저장은 실패 시 throw되어 완료 화면 게이트가 오류를 잡는다(await).
+      await saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation });
+      // 프로필 스냅샷은 부가 정보라 저장 게이트를 막지 않는다(실패해도 비블로킹).
       saveProfileSnapshot(currentUser.uid, {
         fingerHealthScore: updated.fingerHealthScore,
         painIndex: updated.painIndex,
@@ -335,21 +354,25 @@ useEffect(() => {
               {activeTab === "home" && (
                 <>
                 {agenda && (
-                  <HomeAgendaCard agenda={agenda}>
+                  <HomeAgendaCard
+                    agenda={agenda}
+                    focusSignal={agendaFocusSignal}
+                    onFocused={() => trackKpiEvent("home_next_action_viewed", currentUser?.uid, { agendaKey: agenda.key })}
+                  >
                     {agenda.key === "no_baseline" && (
-                      <button onClick={() => setDecisionLoop({ mode: "baseline" })}
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "baseline" }); }}
                         style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
                         첫 기준선 만들기
                       </button>
                     )}
                     {agenda.key === "recheck_ready" && (
-                      <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "recheck", recheck: agenda.recheck }); }}
                         style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
                         지금 재확인하기
                       </button>
                     )}
                     {agenda.key === "awaiting_decision" && (
-                      <button onClick={() => setDecisionLoop({ mode: "decision" })}
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "decision" }); }}
                         style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
                         결과 기록하기
                       </button>
@@ -435,7 +458,7 @@ useEffect(() => {
                 )}
                 </>
               )}
-              {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
+              {activeTab === "scan" && <MotionScanPage onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} onGoToNextAction={goToNextAction} currentUser={currentUser} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
               {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
