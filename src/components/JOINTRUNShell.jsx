@@ -17,6 +17,7 @@ import { useV9Agenda } from "../hooks/useV9Agenda";
 import { useV9Repository } from "../hooks/useV9Repository";
 import { shouldShowQaTools } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
+import HomeAgendaCard from "./v9/HomeAgendaCard";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -334,35 +335,24 @@ useEffect(() => {
               {activeTab === "home" && (
                 <>
                 {agenda && (
-                  <div style={{background:"white",border:"1px solid #B9C7E1",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                      <div>
-                        <div style={{fontSize:10,color:"#122A5C",fontWeight:700,marginBottom:2}}>지금 필요한 기록</div>
-                        <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{agenda.label}</div>
-                      </div>
-                      {agenda.key === "no_baseline" && (
-                        <button onClick={() => setDecisionLoop({ mode: "baseline" })}
-                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
-                          첫 기준선 만들기
-                        </button>
-                      )}
-                      {agenda.key === "recheck_ready" && (
-                        <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
-                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
-                          지금 재확인하기
-                        </button>
-                      )}
-                      {agenda.key === "awaiting_decision" && (
-                        <button onClick={() => setDecisionLoop({ mode: "decision" })}
-                          style={{minHeight:40,padding:"0 16px",background:"#122A5C",color:"white",border:"none",borderRadius:10,fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>
-                          결과 기록하기
-                        </button>
-                      )}
-                    </div>
-                    {agenda.qualityWarning && (
-                      <div style={{marginTop:10,padding:"8px 10px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontSize:11,color:"#92400e",fontWeight:600,lineHeight:1.5}}>
-                        {agenda.qualityWarning}
-                      </div>
+                  <HomeAgendaCard agenda={agenda}>
+                    {agenda.key === "no_baseline" && (
+                      <button onClick={() => setDecisionLoop({ mode: "baseline" })}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        첫 기준선 만들기
+                      </button>
+                    )}
+                    {agenda.key === "recheck_ready" && (
+                      <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        지금 재확인하기
+                      </button>
+                    )}
+                    {agenda.key === "awaiting_decision" && (
+                      <button onClick={() => setDecisionLoop({ mode: "decision" })}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        결과 기록하기
+                      </button>
                     )}
                     {/* shouldShowQaTools()가 false면(production 항상 false) 아무것도 렌더링되지 않는다.
                         2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 QA 전용 버튼. */}
@@ -372,11 +362,11 @@ useEffect(() => {
                           await v9Repository.debugForceRecheckDue(activeEvent.id, agenda.recheck.dueType);
                           refreshAgenda();
                         }}
-                        style={{marginTop:10,width:"100%",minHeight:36,background:"rgba(250,204,21,0.12)",border:"1px solid rgba(202,138,4,0.4)",color:"#854d0e",borderRadius:8,fontSize:11,fontWeight:700}}>
+                        style={{marginTop:12,width:"100%",minHeight:40,background:"rgba(250,204,21,0.12)",border:"1px solid rgba(202,138,4,0.4)",color:"#854d0e",borderRadius:10,fontSize:11.5,fontWeight:700}}>
                         MOCK: 재확인 날짜를 오늘로 당기기 (QA 전용)
                       </button>
                     )}
-                  </div>
+                  </HomeAgendaCard>
                 )}
                 {/* QA 모드 패널 — 대표 검수용 Preview에서만 노출된다(shouldShowQaTools). 일반 사용자
                     경로에는 이 블록 자체가 절대 렌더링되지 않는다. */}
