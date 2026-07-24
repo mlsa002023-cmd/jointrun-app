@@ -18,8 +18,9 @@ import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
-import { FEATURE_FLAGS } from "../config/featureFlags";
+import { FEATURE_FLAGS, shouldShowQaTools } from "../config/featureFlags";
 import { trackKpiEvent } from "../lib/analytics";
+import { V9_ANALYTICS_EVENTS } from "../lib/v9EventTypes";
 // 20초 스캔 동안 순환하는 유도 동작.
 const POSE_GUIDE = [
   { id: "spread", label: "손가락 펴기", instruction: "손가락을 최대한 쫙 펴주세요", sub: "최대 신전각(펴짐) 측정", duration: 7 },
@@ -92,7 +93,14 @@ function clearCanvas(canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoToNextAction, currentUser }) {
+// captureMode(RC1.2 기본 경로): 손 각도를 V10 Event의 관찰 capture로 저장한다.
+//   - 건강 점수·강직지수·VAS·추천을 계산하지 않고, onAngleMeasured로 각도·품질만 넘긴다.
+//   - onScanCompleted(레거시 점수 파이프라인)는 호출하지 않는다.
+// captureMode=false(레거시): absoluteScoreUiEnabled 뒤에서만 쓰는 독립 점수 스캔(기존 동작).
+export default function MotionScanPage({
+  onScanCompleted, triggerFeedback, onGoToNextAction, currentUser,
+  captureMode = false, onAngleMeasured, handSide = null,
+}) {
   const cameraRef = useRef(null);
   const rafRef = useRef(null);
   const finishScanRef = useRef(null); // 4단계에서 실제 함수를 채워 넣을 자리
@@ -110,8 +118,9 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
   const [liveMetrics, setLiveMetrics] = useState(null);
   const [gripMetric, setGripMetric] = useState(null); // 쥐기(fist) 판정용 실시간 디버그 값
   const [debugInfo, setDebugInfo] = useState(null); // { thumbDist, avgFlexion, gesture } — 디버그 오버레이용 실시간 측정값
-  // 개발 모드(vite dev)에서는 기본으로 켜두고, 배포본(Vercel)에서는 우측 상단 DEBUG 버튼을 눌러 수동으로 켠다.
-  // (실제 버그는 배포된 iOS Safari 환경에서 재현되는 경우가 많아, 프로덕션에서도 켤 수 있어야 함)
+  // RC1.2 §5 — DEBUG 오버레이는 QA gate(로컬 dev / Vercel Preview / VITE_QA_MODE_ENABLED + 허용 계정)
+  // 뒤에서만 노출한다. production 일반 사용자에게는 버튼·오버레이가 렌더링되지 않는다.
+  const qaAllowed = shouldShowQaTools(currentUser);
   const [debugVisible, setDebugVisible] = useState(() => {
     try { return !!import.meta.env.DEV; } catch { return false; }
   });
@@ -382,86 +391,87 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
       if (!spread || !ok || !fist) return; // 방어: 셋 다 있어야 계산 가능
 
       const fingerKeys = spread.map((f) => f.key);
+      // 관찰된 각도(ROM)만 계산한다 — captureMode/legacy 공통.
       const perFinger = fingerKeys.map((key, idx) => {
         const s = spread[idx];
         const f = fist[idx];
         const rom = Math.max(0, f.flexion - s.flexion); // 굴곡각 차이 = 가동 범위
+        // score는 legacy(absoluteScoreUiEnabled) 경로에서만 쓴다.
         const score = Math.round((f.score + s.score + ok[idx].score) / 3);
         return { key, name: s.name, rom: Math.round(rom), score };
       });
+      const avgRom = Math.round(perFinger.reduce((sum, f) => sum + f.rom, 0) / perFinger.length);
 
-      const avgRom = Math.round(
-        perFinger.reduce((sum, f) => sum + f.rom, 0) / perFinger.length
-      );
-      const avgScore = Math.round(
-        perFinger.reduce((sum, f) => sum + f.score, 0) / perFinger.length
-      );
-      const stiffnessMin = Math.round((100 - avgScore) * 0.5);
-      const painIndex = Math.round((100 - avgScore) / 15);
-
-      // Finger Health Score의 객관적(스캔) 성분만 여기서 계산한다.
-      // Inflammation/Recovery의 피로도 성분은 컨디션 체크인 값이 있어야 하므로 상위(JOINTRUNShell)에서 결합한다.
-      // Recovery는 v2.0부터 피로도(체크인) 단독이라 stiffnessComponent는 더 이상 계산하지 않는다(작업4).
-      const mobility = computeMobilityScore(perFinger);
-      const stability = computeStabilityScore(spread, ok, fist);
-
-      // 화면 표시용(scanResult)은 기존 flat 구조 그대로 유지 — 완료 화면 JSX는 변경하지 않는다.
+      // 화면 표시용 결과(각도만). 완료 화면(V10 뷰)은 각도·ROM만 읽는다.
       const result = {
         romDeg: avgRom,
-        stiffnessMin,
-        painIndex,
-        avgScore,
-        fingers: perFinger.map((f) => ({
-          key: f.key,
-          name: f.name,
-          score: f.score,
-          flexion: f.rom, // 결과 화면(scanResult.fingers)에서 f.flexion으로 표시하던 부분 호환용
-          deviation: 0,
-          deviationDir: "ulnar",
-        })),
+        handSide,
+        fingers: perFinger.map((f) => ({ key: f.key, name: f.name, flexion: f.rom, score: f.score })),
       };
-
-      const entry = { ts: Date.now(), avgScore, avgFlexion: avgRom, fingers: result.fingers };
-      setHistory((prev) => [entry, ...prev].slice(0, 14));
-
       setScanResult(result);
-      triggerFeedback(FEATURE_FLAGS.absoluteScoreUiEnabled
-        ? `스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`
-        : `스캔 완료! ROM: ${avgRom}°`);
 
-      // 부모(JOINTRUNShell)로 넘길 payload를 저장만 해두고 실제 전송은 저장 게이트 effect가 담당한다.
-      // (raw/metrics/scanScores로 분리된 신규 스키마)
-      scanPayloadRef.current = {
-        metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
-        scanScores: { mobility, stability },
-        raw: rawFrames,
-        recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
-      };
+      if (captureMode) {
+        // ── RC1.2 기본 경로: 각도 관찰 기록만 Event capture로 저장한다 ──
+        // 점수·강직지수·VAS·추천·프로필 갱신·rawFrames를 만들거나 저장하지 않는다.
+        trackKpiEvent(V9_ANALYTICS_EVENTS.LEGACY_SCORE_PATH_BLOCKED, currentUser?.uid);
+        triggerFeedback(`측정 완료 · 관찰 ROM ${avgRom}°`);
+        scanPayloadRef.current = {
+          handSide,
+          perFingerObservedRomDeg: perFinger.map((f) => ({ key: f.key, name: f.name, romDeg: f.rom })),
+          averageObservedRomDeg: avgRom,
+          qualityStatus: "pass", // 3개 동작 모두 확정됨(기록 완료). 별도 비교 품질 판정은 아님.
+          qualityFlags: [],
+        };
+      } else {
+        // ── 레거시 경로(absoluteScoreUiEnabled 뒤): 기존 점수 파이프라인 유지 ──
+        const avgScore = Math.round(perFinger.reduce((sum, f) => sum + f.score, 0) / perFinger.length);
+        const stiffnessMin = Math.round((100 - avgScore) * 0.5);
+        const painIndex = Math.round((100 - avgScore) / 15);
+        const mobility = computeMobilityScore(perFinger);
+        const stability = computeStabilityScore(spread, ok, fist);
+        result.avgScore = avgScore;
+        result.stiffnessMin = stiffnessMin;
+        result.painIndex = painIndex;
+        setScanResult({ ...result });
+        setHistory((prev) => [{ ts: Date.now(), avgScore, avgFlexion: avgRom, fingers: result.fingers }, ...prev].slice(0, 14));
+        triggerFeedback(`스캔 완료! Finger Score: ${avgScore}점, ROM: ${avgRom}°`);
+        scanPayloadRef.current = {
+          metrics: { perFinger, romDeg: avgRom, stiffnessMin, painIndex },
+          scanScores: { mobility, stability },
+          raw: rawFrames,
+          recommendation: buildRecommendation(mobility.value, avgRom, { includeScoreLabel: true }),
+        };
+      }
 
       stopDetectLoop();
       setSaveState("idle");
       setPhase("completed");
     },
-    [triggerFeedback, stopDetectLoop]
+    [triggerFeedback, stopDetectLoop, captureMode, handSide, currentUser]
   );
 
-  // 저장 게이트 — payload를 부모의 onScanCompleted로 전송하고 성공/실패를 상태로 반영한다.
-  // onScanCompleted는 실제 Firestore 저장이 성공해야 resolve되는 Promise(실패 시 reject).
+  // 저장 게이트 — 실제 저장이 성공해야 resolve되는 Promise(실패 시 reject)를 기다려 상태를 반영한다.
+  // captureMode: onAngleMeasured(관찰 각도 → Event capture). legacy: onScanCompleted(점수 파이프라인).
   const persistScan = useCallback(async () => {
     if (savingRef.current || !scanPayloadRef.current) return; // 중복 저장 차단
     savingRef.current = true;
     setSaveState("saving");
     try {
-      await onScanCompleted(scanPayloadRef.current);
+      if (captureMode) {
+        await onAngleMeasured?.(scanPayloadRef.current);
+        trackKpiEvent(V9_ANALYTICS_EVENTS.ANGLE_RECORD_SAVED, currentUser?.uid);
+      } else {
+        await onScanCompleted(scanPayloadRef.current);
+      }
       setSaveState("saved");
     } catch (err) {
-      console.error("[MotionScanPage] 스캔 저장 실패:", err);
+      console.error("[MotionScanPage] 저장 실패:", err);
       setSaveState("error");
       trackKpiEvent("scan_result_save_failed", currentUser?.uid);
     } finally {
       savingRef.current = false;
     }
-  }, [onScanCompleted, currentUser]);
+  }, [captureMode, onAngleMeasured, onScanCompleted, currentUser]);
 
   // 완료 화면에 진입하면(한 번) 결과 조회 이벤트를 남기고 저장을 시작한다.
   useEffect(() => {
@@ -481,31 +491,34 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
     // prod에서 숨기지만(아래 JSX), 다른 경로로 호출되는 것까지 막기 위해 함수에서도 가드한다.
     if (!import.meta.env.DEV) return;
     const simFingers = [
-      { key: "index", name: "검지", flexion: 118, deviation: 4.2, deviationDir: "ulnar", score: 82 },
-      { key: "middle", name: "중지", flexion: 125, deviation: 3.1, deviationDir: "radial", score: 88 },
-      { key: "ring", name: "약지", flexion: 110, deviation: 6.8, deviationDir: "ulnar", score: 72 },
-      { key: "pinky", name: "소지", flexion: 105, deviation: 5.5, deviationDir: "ulnar", score: 68 },
+      { key: "index", name: "검지", flexion: 118, score: 82 },
+      { key: "middle", name: "중지", flexion: 125, score: 88 },
+      { key: "ring", name: "약지", flexion: 110, score: 72 },
+      { key: "pinky", name: "소지", flexion: 105, score: 68 },
     ];
-    const simResult = {
-      romDeg: 122, stiffnessMin: 32, painIndex: 6,
-      fingers: simFingers,
-      avgScore: 78,
-    };
-    setScanResult(simResult);
-    triggerFeedback("시뮬레이션 스캔 완료!");
+    setScanResult({ romDeg: 122, handSide, fingers: simFingers });
+    triggerFeedback("시뮬레이션 측정 완료!");
 
-    const mobility = computeMobilityScore(simFingers.map((f) => ({ rom: f.flexion })));
-    const stability = computeStabilityScore(simFingers);
-
-    // 실제 스캔과 동일하게 저장 게이트 effect가 처리하도록 payload만 세팅한다.
-    // isSimulated=true라 상위에서 Firebase 저장은 건너뛰고 즉시 resolve → 게이트는 "saved"가 된다.
-    scanPayloadRef.current = {
-      metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
-      scanScores: { mobility, stability },
-      raw: null,
-      recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: FEATURE_FLAGS.absoluteScoreUiEnabled }),
-      isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
-    };
+    if (captureMode) {
+      // captureMode: 각도 관찰 기록만. 점수·프로필·rawFrames 없음.
+      scanPayloadRef.current = {
+        handSide,
+        perFingerObservedRomDeg: simFingers.map((f) => ({ key: f.key, name: f.name, romDeg: f.flexion })),
+        averageObservedRomDeg: 122,
+        qualityStatus: "pass",
+        qualityFlags: [],
+      };
+    } else {
+      const mobility = computeMobilityScore(simFingers.map((f) => ({ rom: f.flexion })));
+      const stability = computeStabilityScore(simFingers);
+      scanPayloadRef.current = {
+        metrics: { perFinger: simFingers, romDeg: 122, stiffnessMin: 32, painIndex: 6 },
+        scanScores: { mobility, stability },
+        raw: null,
+        recommendation: buildRecommendation(mobility.value, 122, { includeScoreLabel: true }),
+        isSimulated: true, // Firebase에 저장하지 않도록 상위(JOINTRUNShell)에 표시
+      };
+    }
     setSaveState("idle");
     setPhase("completed");
   };
@@ -540,18 +553,20 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
                 <span className="text-[9px] text-blue-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
                 </span>
-                {/* 배포본(Vercel)에서도 필요할 때 켤 수 있는 디버그 오버레이 토글 — "주먹이 안 잡힌다" 류 버그를 눈으로 바로 확인하기 위함 */}
-                <button
-                  type="button"
-                  onClick={() => setDebugVisible((v) => !v)}
-                  className={`text-[9px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
-                    debugVisible
-                      ? "bg-amber-400 text-slate-950 border-amber-400"
-                      : "bg-slate-950/80 text-slate-400 border-slate-700"
-                  }`}
-                >
-                  DEBUG
-                </button>
+                {/* RC1.2 §5 — DEBUG 토글은 QA gate(qaAllowed) 뒤에서만 노출한다. production 일반 사용자에겐 없음. */}
+                {qaAllowed && (
+                  <button
+                    type="button"
+                    onClick={() => setDebugVisible((v) => !v)}
+                    className={`text-[9px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                      debugVisible
+                        ? "bg-amber-400 text-slate-950 border-amber-400"
+                        : "bg-slate-950/80 text-slate-400 border-slate-700"
+                    }`}
+                  >
+                    DEBUG
+                  </button>
+                )}
               </span>
             </div>
 
@@ -609,8 +624,9 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
             {/* ── 측정·데이터 로그 화면 (디버그 오버레이) ──
                 "주먹이 안 잡힌다", "OK가 이상하다" 같은 문제가 생겼을 때
                 모델이 실제로 무엇을 보고 있는지 숫자로 바로 확인하기 위한 패널.
-                DEBUG 버튼으로 켜고 끌 수 있고, liveMetrics 패널과 겹치지 않게 그 위에 띄운다. */}
-            {debugVisible && (
+                DEBUG 버튼으로 켜고 끌 수 있고, liveMetrics 패널과 겹치지 않게 그 위에 띄운다.
+                RC1.2 §5 — qaAllowed(QA gate) 뒤에서만 렌더링(손 각도 내부 계산값 노출 방지). */}
+            {qaAllowed && debugVisible && (
               <div className="absolute bottom-20 left-2 right-2 z-30 bg-black/90 border border-amber-400/40 rounded-lg p-2 font-mono text-[10px] leading-relaxed text-lime-400 shadow-lg">
                 {debugInfo ? (
                   <>
@@ -648,16 +664,16 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
         {phase === "idle" && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
             <div className="text-center mb-2">
-              <p className="text-[9px] text-blue-400 uppercase tracking-widest font-mono">Real MediaPipe AI Scan</p>
-              <h2 className="text-base font-bold text-white">실제 손 관절 스캔</h2>
-              <p className="text-[10px] text-slate-400 leading-normal mt-1">카메라 : OFF · AI 모델 : 대기 · 손 감지 : 없음</p>
+              <p className="text-[9px] text-blue-400 uppercase tracking-widest font-mono">Observation</p>
+              <h2 className="text-base font-bold text-white">손 각도 관찰 기록{handSide ? ` · ${handSide === "left" ? "왼손" : "오른손"}` : ""}</h2>
+              <p className="text-[10px] text-slate-400 leading-normal mt-1">같은 조건으로 손 각도를 관찰해 기록합니다.</p>
             </div>
             <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
               <Camera className="w-8 h-8 text-blue-400" />
             </div>
-            <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />원본 카메라 영상은 저장하지 않으며, 측정 결과만 사용자 계정에 저장됩니다.</p>
+            <p className="text-[10px] text-slate-400 text-center leading-relaxed">카메라 앞에 손을 가볍게 펼쳐 주세요.<br />원본 카메라 영상·이미지·랜드마크는 저장하지 않으며, 관찰된 각도만 기록에 사용됩니다.</p>
             <button onClick={startScan} className="bg-blue-500 hover:bg-blue-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs shadow-md transition-all">
-              MediaPipe 스캔 시작
+              관찰 기록 시작
             </button>
             {import.meta.env.DEV && (
               <button onClick={runSimulation} className="text-[10px] text-slate-500 underline">
@@ -753,10 +769,14 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <div className="text-[9px] text-slate-500">관찰된 ROM(가동 범위)</div>
+                      <div className="text-[9px] text-slate-500">관찰된 ROM</div>
                       <div className="text-sm font-black text-[#122A5C] font-mono">{scanResult.romDeg}°</div>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      <div className="text-[9px] text-slate-500">사용 손</div>
+                      <div className="text-sm font-black text-[#16213D]">{scanResult.handSide === "left" ? "왼손" : scanResult.handSide === "right" ? "오른손" : "—"}</div>
                     </div>
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                       <div className="text-[9px] text-slate-500">측정 날짜</div>
@@ -765,7 +785,8 @@ export default function MotionScanPage({ onScanCompleted, triggerFeedback, onGoT
                   </div>
                   <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3">
                     <div className="text-[9px] text-slate-500">촬영 품질</div>
-                    <div className="text-[12px] font-bold text-[#1F9E96]">3개 동작 모두 정상 인식 · 비교 가능</div>
+                    {/* RC1.2 §4 — 실제 비교 품질 판정이 없으므로 "비교 가능" 고정 표기를 하지 않는다. */}
+                    <div className="text-[12px] font-bold text-[#16213D]">3개 동작 기록 완료</div>
                   </div>
                   <div className="bg-[#F4F6FA] border border-[#E1E7EF] p-2.5 rounded-xl text-[11px] text-slate-600 leading-relaxed">
                     동일한 촬영 조건에서 기록된 관찰값입니다. 질환 진단이나 악화 여부를 의미하지 않습니다.

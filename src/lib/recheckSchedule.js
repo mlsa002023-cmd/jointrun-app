@@ -56,6 +56,17 @@ export function daysUntil(dueAt, now = new Date()) {
 export function getHomeAgendaState(event, now = new Date()) {
   if (!event) return { key: "no_baseline", label: "첫 기준선 만들기" };
 
+  // RC1.2 — 각도 관찰 기록만 저장하고 증상을 아직 남기지 않은 상태. 별도 촬영을 반복시키지 않고,
+  // 같은 Event의 증상 기록으로 이어져 기준선을 확정하게 한다.
+  if (event.status === "symptom_pending") {
+    return {
+      key: "symptom_pending",
+      label: "측정한 순간의 증상을 함께 기록해 주세요",
+      eventId: event.id,
+      baselineCaptureId: event.baselineCaptureId ?? null,
+    };
+  }
+
   const week2 = event.rechecks?.find((r) => r.dueType === "week2");
   const week4 = event.rechecks?.find((r) => r.dueType === "week4");
 

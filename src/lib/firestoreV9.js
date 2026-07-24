@@ -24,7 +24,7 @@ import {
 } from "firebase/firestore";
 import {
   V9_SCHEMA_VERSION, CAPTURE_PROTOCOL_VERSION, ALGORITHM_VERSION,
-  EVENT_STATUS, RECHECK_STATUS, RECHECK_DUE_TYPE,
+  EVENT_STATUS, RECHECK_STATUS, RECHECK_DUE_TYPE, CAPTURE_TYPE,
 } from "./v9EventTypes";
 import { computeRecheckDueDates } from "./recheckSchedule";
 import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
@@ -128,6 +128,70 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
   }
   const ref = await addDoc(capturesCol(uid, eventId), { ...base, capturedAt: serverTimestamp() });
   return ref.id;
+}
+
+/**
+ * RC1.2 — 손 각도 관찰 기록을 V10 Event의 baseline capture로 저장한다.
+ * 최소수집: 각도·품질·버전 메타만 저장하고 원본 사진/영상/랜드마크/점수/추천은 저장하지 않는다.
+ * (실시간 랜드마크는 각도 계산에만 쓰고 이 함수에 도달하기 전에 폐기된다.)
+ * 저장 직후 Event 상태를 symptom_pending으로 두어, 증상 기록을 마쳐야 baseline이 확정되게 한다.
+ */
+export async function saveObservationalAngleCapture(uid, eventId, { handSide, perFingerObservedRomDeg, averageObservedRomDeg, qualityStatus, qualityFlags }) {
+  if (!uid || !eventId) return null;
+  const base = {
+    schemaVersion: V9_SCHEMA_VERSION,
+    eventId,
+    type: CAPTURE_TYPE.BASELINE, // 기존 리더(type==="baseline") 호환
+    handSide: handSide ?? null,
+    perFingerObservedRomDeg: perFingerObservedRomDeg ?? [],
+    averageObservedRomDeg: averageObservedRomDeg ?? null,
+    qualityStatus: qualityStatus ?? null,
+    qualityFlags: qualityFlags ?? [],
+    symptomSnapshot: null, // 증상은 다음 단계에서 채운다(symptom_pending)
+    captureProtocolVersion: CAPTURE_PROTOCOL_VERSION,
+    algorithmVersion: ALGORITHM_VERSION,
+    appVersion: APP_VERSION,
+  };
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event) return null;
+    const id = nextDemoId("cap");
+    event.captures.push({ id, ...base, capturedAt: new Date() });
+    event.status = EVENT_STATUS.SYMPTOM_PENDING;
+    event.baselineCaptureId = id;
+    event.baselineQualityStatus = qualityStatus ?? null;
+    event.updatedAt = new Date();
+    return id;
+  }
+  const ref = await addDoc(capturesCol(uid, eventId), { ...base, capturedAt: serverTimestamp() });
+  await updateDoc(eventDoc(uid, eventId), {
+    status: EVENT_STATUS.SYMPTOM_PENDING,
+    baselineCaptureId: ref.id,
+    baselineQualityStatus: qualityStatus ?? null,
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+/**
+ * RC1.2 — symptom_pending 상태의 Event에 증상을 붙이고 첫 기준선을 확정한다.
+ * 증상 저장이 성공한 뒤에만 baseline_created로 전환하고 2주·4주 재확인을 예약한다.
+ * capture는 불변 원칙이지만 symptomSnapshot 필드에 한해 1회(null→객체) 채우는 것만 허용한다(Rules 검증).
+ * 이미 baseline_created 이상이면 중복 확정을 막기 위해 아무 것도 하지 않는다.
+ */
+export async function confirmBaselineWithSymptom(uid, eventId, captureId, symptomSnapshot) {
+  if (!uid || !eventId || !captureId) return null;
+  if (USE_DEMO_STORE) {
+    const event = getDemoEvents(uid).find((e) => e.id === eventId);
+    if (!event || event.status !== EVENT_STATUS.SYMPTOM_PENDING) return null;
+    const capture = event.captures.find((c) => c.id === captureId);
+    if (capture && capture.symptomSnapshot == null) capture.symptomSnapshot = symptomSnapshot ?? null;
+    // markBaselineCreated와 동일한 확정·일정 생성(중복 baselineCaptureId 세팅은 무해).
+    return markBaselineCreated(uid, eventId, captureId, capture?.capturedAt ?? new Date(), event.baselineQualityStatus ?? "pass");
+  }
+  // 증상 저장(캡처 1회 업데이트) → 성공 후 baseline 확정.
+  await updateDoc(doc(db, "users", uid, "v9Events", eventId, "captures", captureId), { symptomSnapshot: symptomSnapshot ?? null });
+  return markBaselineCreated(uid, eventId, captureId, new Date(), "pass");
 }
 
 /**
@@ -351,6 +415,7 @@ export async function getCapture(uid, eventId, captureId) {
 
 const OPEN_STATUSES = new Set([
   EVENT_STATUS.DRAFT, EVENT_STATUS.CAPTURE_STARTED, EVENT_STATUS.CAPTURED,
+  EVENT_STATUS.SYMPTOM_PENDING,
   EVENT_STATUS.BASELINE_CREATED, EVENT_STATUS.RECHECK_DUE, EVENT_STATUS.RECHECKED,
   EVENT_STATUS.COMPARED, EVENT_STATUS.DECISION_LOGGED,
 ]);

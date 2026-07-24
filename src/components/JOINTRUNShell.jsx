@@ -15,9 +15,12 @@ import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
 import { useV9Agenda } from "../hooks/useV9Agenda";
 import { useV9Repository } from "../hooks/useV9Repository";
-import { shouldShowQaTools } from "../config/featureFlags";
+import { shouldShowQaTools, FEATURE_FLAGS } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
 import HomeAgendaCard from "./v9/HomeAgendaCard";
+import BaselineAngleFlow from "./v9/BaselineAngleFlow";
+import SymptomSnapshotForm from "./v9/SymptomSnapshotForm";
+import { V9_ANALYTICS_EVENTS } from "../lib/v9EventTypes";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -85,7 +88,10 @@ const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = us
 // V9 Decision Loop(트리거→기준선→재확인→비교) 진행 상태 — 04_APP_PRD_V9.md S07 홈 상단 카드.
 const { activeEvent, agenda, refresh: refreshAgenda } = useV9Agenda();
 const v9Repository = useV9Repository();
-const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "baseline"|"recheck", recheck? } | null
+const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "recheck"|"decision", recheck? } | null
+// RC1.2 — V10 첫 기준선 각도 관찰 흐름 오버레이 + symptom_pending 증상 기록 오버레이.
+const [baselineFlow, setBaselineFlow] = useState(false);
+const [symptomEntry, setSymptomEntry] = useState(null); // { eventId, captureId } | null
 const [qaSimulateNetworkError, setQaSimulateNetworkError] = useState(false);
 const [qaResetting, setQaResetting] = useState(false);
 // QA 계정도 기본은 Mock Capture(빠른 시나리오 검증)지만, 실기기에서는 이 토글을 꺼서
@@ -360,9 +366,19 @@ useEffect(() => {
                     onFocused={() => trackKpiEvent("home_next_action_viewed", currentUser?.uid, { agendaKey: agenda.key })}
                   >
                     {agenda.key === "no_baseline" && (
-                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "baseline" }); }}
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setBaselineFlow(true); }}
                         style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
                         첫 기준선 만들기
+                      </button>
+                    )}
+                    {agenda.key === "symptom_pending" && (
+                      <button onClick={() => {
+                          trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_ENTRY_STARTED, currentUser?.uid, { eventId: agenda.eventId });
+                          trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key });
+                          setSymptomEntry({ eventId: agenda.eventId, captureId: agenda.baselineCaptureId });
+                        }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        증상·상황 기록하기
                       </button>
                     )}
                     {agenda.key === "recheck_ready" && (
@@ -458,7 +474,27 @@ useEffect(() => {
                 )}
                 </>
               )}
-              {activeTab === "scan" && <MotionScanPage onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} onGoToNextAction={goToNextAction} currentUser={currentUser} />}
+              {activeTab === "scan" && (
+                FEATURE_FLAGS.absoluteScoreUiEnabled ? (
+                  // 레거시(내부 flag): 점수 기반 독립 스캔. production 기본에는 이 경로가 없다.
+                  <MotionScanPage onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} onGoToNextAction={goToNextAction} currentUser={currentUser} />
+                ) : agenda?.key === "no_baseline" ? (
+                  // V10 기본: 각도 관찰으로 첫 기준선을 만든다(Trigger→Hand→Angle→symptom_pending).
+                  <BaselineAngleFlow event={null} onClose={() => setActiveTab("home")} onGoToNextAction={goToNextAction} />
+                ) : (
+                  // 이미 기준선 기록이 있는 경우 — 재측정 대신 타임라인/홈으로 안내.
+                  <div style={{ padding: "40px 24px", textAlign: "center" }}>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: "#16213D" }}>이미 기준선 기록이 있어요</p>
+                    <p style={{ fontSize: 13, color: "#5B6478", marginTop: 8, lineHeight: 1.6 }}>
+                      다음 행동은 홈의 &lsquo;지금 필요한 기록&rsquo; 카드에서 이어서 진행할 수 있어요.
+                    </p>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 20 }}>
+                      <button onClick={() => setActiveTab("home")} style={{ minHeight: 48, padding: "0 20px", background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>홈으로</button>
+                      <button onClick={() => setActiveTab("timeline")} style={{ minHeight: 48, padding: "0 20px", background: "white", color: "#122A5C", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>타임라인 보기</button>
+                    </div>
+                  </div>
+                )
+              )}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
               {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
@@ -528,7 +564,7 @@ useEffect(() => {
         />
       )}
 
-      {/* V9 DECISION LOOP (트리거→기준선 또는 재확인→비교) */}
+      {/* V9 DECISION LOOP (재확인→비교 또는 선택→결과). 첫 기준선은 BaselineAngleFlow가 담당. */}
       {decisionLoop && currentUser && (
         <DecisionLoopFlow
           mode={decisionLoop.mode}
@@ -539,6 +575,32 @@ useEffect(() => {
           simulateNetworkError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
           forceMockCapture={shouldShowQaTools(currentUser) ? qaUseMockCapture : undefined}
         />
+      )}
+
+      {/* RC1.2 — V10 첫 기준선 각도 관찰 흐름(Trigger→Hand→Angle→symptom_pending) */}
+      {baselineFlow && currentUser && (
+        <BaselineAngleFlow
+          event={activeEvent}
+          onClose={() => { setBaselineFlow(false); refreshAgenda(); }}
+          onGoToNextAction={goToNextAction}
+        />
+      )}
+
+      {/* RC1.2 — symptom_pending: 같은 Event의 증상 기록 → 성공 시 baseline 확정 + 2·4주 일정 */}
+      {symptomEntry && currentUser && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 320, overflowY: "auto", background: "#F4F6FA" }}>
+          <SymptomSnapshotForm
+            onCancel={() => setSymptomEntry(null)}
+            onSubmit={async (symptomSnapshot) => {
+              await v9Repository.confirmBaselineWithSymptom(symptomEntry.eventId, symptomEntry.captureId, symptomSnapshot);
+              trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_SNAPSHOT_SAVED, currentUser?.uid, { eventId: symptomEntry.eventId });
+              trackKpiEvent(V9_ANALYTICS_EVENTS.BASELINE_COMPLETED, currentUser?.uid, { eventId: symptomEntry.eventId });
+              setSymptomEntry(null);
+              await refreshAgenda();
+              triggerFeedback("첫 기준선이 저장되었습니다. 2주·4주 뒤 다시 확인해요.");
+            }}
+          />
+        </div>
       )}
 
     </div>

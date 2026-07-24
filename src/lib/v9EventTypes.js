@@ -16,6 +16,9 @@ export const EVENT_STATUS = {
   DRAFT: "draft",
   CAPTURE_STARTED: "capture_started",
   CAPTURED: "captured",
+  // RC1.2 — 각도 관찰 기록을 저장했지만 아직 증상을 함께 남기지 않은 상태.
+  // 이 상태에서만 SymptomSnapshotForm으로 이어져 baseline_created로 확정된다.
+  SYMPTOM_PENDING: "symptom_pending",
   BASELINE_CREATED: "baseline_created",
   RECHECK_DUE: "recheck_due",
   RECHECKED: "rechecked",
@@ -43,7 +46,9 @@ export const RECHECK_STATUS = {
   EXPIRED: "expired",
 };
 
-export const CAPTURE_TYPE = { BASELINE: "baseline", RECHECK: "recheck" };
+// RC1.2 — 각도 관찰 기록은 기준선 capture로 저장된다(기존 리더 type==="baseline" 호환).
+// OBSERVATIONAL_ANGLE은 스펙상 별칭이며, 현재 저장 경로는 BASELINE을 사용한다.
+export const CAPTURE_TYPE = { BASELINE: "baseline", RECHECK: "recheck", OBSERVATIONAL_ANGLE: "observational_angle" };
 export const QUALITY_STATUS = { PASS: "pass", RETRY: "retry", UNRELIABLE: "unreliable" };
 
 export const PERCEIVED_CHANGE = {
@@ -132,4 +137,13 @@ export const V9_ANALYTICS_EVENTS = {
   PRICING_VIEWED: "pricing_viewed",
   PILOT_CTA_CLICKED: "pilot_cta_clicked",
   DECISION_LOOP_COMPLETED: "decision_loop_completed",
+  // RC1.2 — 각도 관찰 기록 → 증상 → 기준선 확정 흐름. property에 진단·점수값을 넣지 않는다.
+  ANGLE_RECORD_STARTED: "angle_record_started",
+  HAND_SIDE_SELECTED: "hand_side_selected",
+  ANGLE_RECORD_SAVED: "angle_record_saved",
+  SYMPTOM_PENDING_VIEWED: "symptom_pending_viewed",
+  SYMPTOM_ENTRY_STARTED: "symptom_entry_started",
+  BASELINE_COMPLETED: "baseline_completed",
+  LEGACY_SCORE_PATH_BLOCKED: "legacy_score_path_blocked",
+  DEBUG_ACCESS_DENIED: "debug_access_denied",
 };

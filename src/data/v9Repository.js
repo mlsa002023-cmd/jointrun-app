@@ -8,6 +8,7 @@ import {
   completeRecheck, skipRecheck, saveComparison, getCapture,
   getActiveV9Event, getV9EventHistory, getV9EventHistoryDetailed, getEventDetail,
   saveDecision, saveOutcome, __debugForceRecheckDue, resetV9DataForUser,
+  saveObservationalAngleCapture, confirmBaselineWithSymptom,
 } from "../lib/firestoreV9";
 
 export function createV9Repository(uid) {
@@ -30,6 +31,17 @@ export function createV9Repository(uid) {
     async confirmBaseline(eventId, captureId, baselineCapturedAt, baselineQualityStatus) {
       if (!uid) return null;
       return markBaselineCreated(uid, eventId, captureId, baselineCapturedAt, baselineQualityStatus);
+    },
+
+    // RC1.2 — 각도 관찰 기록 저장(→ symptom_pending) + 증상 저장 후 기준선 확정.
+    async saveAngleCapture(eventId, angleData) {
+      if (!uid) return null;
+      return saveObservationalAngleCapture(uid, eventId, angleData);
+    },
+
+    async confirmBaselineWithSymptom(eventId, captureId, symptomSnapshot) {
+      if (!uid) return null;
+      return confirmBaselineWithSymptom(uid, eventId, captureId, symptomSnapshot);
     },
 
     async completeRecheck(eventId, recheckId, captureId, qualityStatus) {
