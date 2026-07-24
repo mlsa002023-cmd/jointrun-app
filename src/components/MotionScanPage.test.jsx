@@ -44,6 +44,21 @@ function renderScan(overrides = {}) {
   return props;
 }
 
+// RC1.2 captureMode(각도 관찰) 렌더 헬퍼.
+function renderCapture(overrides = {}) {
+  const props = {
+    captureMode: true,
+    handSide: "right",
+    onAngleMeasured: vi.fn().mockResolvedValue(undefined),
+    onGoToNextAction: vi.fn(),
+    triggerFeedback: vi.fn(),
+    currentUser: { uid: "u1" },
+    ...overrides,
+  };
+  render(<MotionScanPage {...props} />);
+  return props;
+}
+
 // dev 전용 "시뮬레이션으로 건너뛰기"로 완료 화면에 진입한다.
 async function enterCompleted() {
   const simBtn = await screen.findByText("시뮬레이션으로 건너뛰기");
@@ -151,5 +166,55 @@ describe("MotionScanPage 완료 화면 — P0 UX 보정", () => {
     await enterCompleted();
     await screen.findByRole("button", { name: "다음 단계로 이동" });
     expect(trackKpiEvent).toHaveBeenCalledWith("scan_result_viewed", "u1");
+  });
+});
+
+describe("MotionScanPage captureMode(RC1.2 각도 관찰) — production 기본", () => {
+  it("완료 화면에 점수·강직지수·VAS·자동추천·DEBUG가 없고, 사용 손·관찰 각도만 보인다", async () => {
+    renderCapture();
+    await enterCompleted();
+    await screen.findByRole("button", { name: "다음 단계로 이동" });
+    // 금지 항목 0건
+    expect(screen.queryByText("강직지수")).toBeNull();
+    expect(screen.queryByText("VAS")).toBeNull();
+    expect(screen.queryByText(/Finger Score/i)).toBeNull();
+    expect(screen.queryByText(/관찰:/)).toBeNull();
+    expect(screen.queryByText("DEBUG")).toBeNull(); // qaAllowed=false(mock)
+    // 관찰값 + 사용 손 + 품질 문구
+    expect(screen.getByText("관찰된 손가락 각도")).toBeInTheDocument();
+    expect(screen.getByText("사용 손")).toBeInTheDocument();
+    expect(screen.getByText("오른손")).toBeInTheDocument();
+    // 실제 비교 품질 판정이 없으므로 "비교 가능" 고정표기 없이 "3개 동작 기록 완료"
+    expect(screen.getByText("3개 동작 기록 완료")).toBeInTheDocument();
+    expect(screen.queryByText(/비교 가능/)).toBeNull();
+  });
+
+  it("captureMode는 onScanCompleted(점수 파이프라인)를 호출하지 않고 onAngleMeasured만 호출한다", async () => {
+    const onScanCompleted = vi.fn().mockResolvedValue(undefined);
+    const onAngleMeasured = vi.fn().mockResolvedValue(undefined);
+    renderCapture({ onScanCompleted, onAngleMeasured });
+    await enterCompleted();
+    await screen.findByRole("button", { name: "다음 단계로 이동" });
+    expect(onAngleMeasured).toHaveBeenCalledTimes(1);
+    expect(onScanCompleted).not.toHaveBeenCalled();
+    // 저장 payload에 점수·rawFrames 계열 필드가 없다.
+    const payload = onAngleMeasured.mock.calls[0][0];
+    expect(payload.handSide).toBe("right");
+    expect(payload.averageObservedRomDeg).toBeGreaterThan(0);
+    for (const k of ["scanScores", "metrics", "raw", "recommendation"]) {
+      expect(payload[k]).toBeUndefined();
+    }
+  });
+
+  it("각도 저장 성공 후에만 '다음 단계로'가 활성화된다", async () => {
+    let resolve;
+    const onAngleMeasured = vi.fn(() => new Promise((r) => { resolve = r; }));
+    renderCapture({ onAngleMeasured });
+    await enterCompleted();
+    const saving = await screen.findByRole("button", { name: "저장 중입니다" });
+    expect(saving).toBeDisabled();
+    await act(async () => { resolve(); });
+    const next = await screen.findByRole("button", { name: "다음 단계로 이동" });
+    expect(next).not.toBeDisabled();
   });
 });

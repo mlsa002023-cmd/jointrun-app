@@ -10,21 +10,33 @@ service cloud.firestore {
     function isV9EventShape(data) {
       return data.keys().hasAll(['schemaVersion', 'primaryTrigger', 'status'])
         && data.primaryTrigger is string
-        && data.status in ['draft', 'capture_started', 'captured', 'baseline_created',
-                            'recheck_due', 'rechecked', 'compared', 'decision_logged',
-                            'outcome_logged', 'completed', 'capture_failed',
+        // RC1.2 — symptom_pending 추가(각도 관찰 저장 후 증상 대기).
+        && data.status in ['draft', 'capture_started', 'captured', 'symptom_pending',
+                            'baseline_created', 'recheck_due', 'rechecked', 'compared',
+                            'decision_logged', 'outcome_logged', 'completed', 'capture_failed',
                             'recheck_skipped', 'comparison_unreliable', 'abandoned', 'deleted']
         && (!('secondaryTriggers' in data) || data.secondaryTriggers is list)
         && (!('baselineQualityStatus' in data) || data.baselineQualityStatus == null
             || data.baselineQualityStatus in ['pass', 'unreliable']);
     }
 
+    // RC1.2 — 개인정보 최소수집: capture에 원본/랜드마크/점수/추천 계열 필드가 오면 쓰기를 거부한다.
+    function hasNoForbiddenCaptureFields(data) {
+      return !data.keys().hasAny(['rawFrames', 'landmarks', 'scores', 'recommendation',
+                                  'fingerHealthScore', 'painIndex', 'stiffnessMin', 'metrics',
+                                  'photo', 'image', 'video'])
+        // landmarksRef가 존재한다면 null만 허용(비어있음). 실제 참조 저장은 금지.
+        && (!('landmarksRef' in data) || data.landmarksRef == null);
+    }
+
     function isV9CaptureShape(data) {
       return data.keys().hasAll(['schemaVersion', 'type', 'qualityStatus'])
-        && data.type in ['baseline', 'recheck']
+        && data.type in ['baseline', 'recheck', 'observational_angle']
         && data.qualityStatus in ['pass', 'retry', 'unreliable']
         && (!('handSide' in data) || data.handSide == null || data.handSide in ['left', 'right'])
-        && (!('qualityFlags' in data) || data.qualityFlags is list);
+        && (!('qualityFlags' in data) || data.qualityFlags is list)
+        && (!('perFingerObservedRomDeg' in data) || data.perFingerObservedRomDeg is list)
+        && hasNoForbiddenCaptureFields(data);
     }
 
     function isV9RecheckShape(data) {
@@ -100,7 +112,14 @@ service cloud.firestore {
           allow read: if request.auth != null && request.auth.uid == userId;
           allow create: if request.auth != null && request.auth.uid == userId
                           && isV9CaptureShape(request.resource.data);
-          allow update, delete: if false; // 촬영 기록은 수정/삭제 불가 (데이터 무결성)
+          // RC1.2 — 증상은 각도 관찰 저장 이후 1회만(null→객체) symptomSnapshot 필드에 붙인다.
+          // 그 외 필드 변경·삭제는 여전히 불가(불변 원칙). 금지 필드는 여기서도 차단.
+          allow update: if request.auth != null && request.auth.uid == userId
+                          && resource.data.symptomSnapshot == null
+                          && request.resource.data.symptomSnapshot != null
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['symptomSnapshot'])
+                          && hasNoForbiddenCaptureFields(request.resource.data);
+          allow delete: if false;
         }
 
         match /rechecks/{recheckId} {
