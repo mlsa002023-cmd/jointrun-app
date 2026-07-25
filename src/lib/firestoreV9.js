@@ -17,7 +17,7 @@
 // 클릭해서 끝까지 확인할 수 있다. 운영 환경(FIREBASE_ENABLED=true)에서는 이 경로를 타지 않는다.
 // ─────────────────────────────────────────────
 
-import { FIREBASE_ENABLED, db } from "../firebase/config";
+import { FIREBASE_ENABLED, db, isFirestoreReady } from "../firebase/config";
 import {
   collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc,
   query, orderBy, limit, serverTimestamp, runTransaction,
@@ -31,7 +31,11 @@ import { computeRecheckDueDates } from "./recheckSchedule";
 import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
 
 const APP_VERSION = "1.0.0";
-const USE_DEMO_STORE = !FIREBASE_ENABLED || !db;
+// RC1.2.2 P0-3 — Firebase 초기화가 지연되므로(firebase/config.js 참고) 모듈 로드
+// 시점에 상수로 굳히지 않고, 호출할 때마다 실제 준비 상태를 확인한다.
+function isDemoStore() {
+  return !FIREBASE_ENABLED || !isFirestoreReady();
+}
 
 // ── 데모 모드 in-memory 스토어 (uid -> event[]). 새로고침하면 사라진다 — 영구 저장이 아니다. ──
 const demoEventsByUid = new Map();
@@ -85,7 +89,7 @@ export async function createV9Event(uid, { primaryTrigger, secondaryTriggers = [
     baselineQualityStatus: null,
     nextRecheckDueAt: null,
   };
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const id = nextDemoId("evt");
     const now = new Date();
     getDemoEvents(uid).push({ id, ...base, createdAt: now, updatedAt: now, captures: [], rechecks: [], comparisons: [], decisions: [], outcomes: [] });
@@ -97,7 +101,7 @@ export async function createV9Event(uid, { primaryTrigger, secondaryTriggers = [
 
 export async function updateV9EventStatus(uid, eventId, status) {
   if (!uid || !eventId) return;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (event) { event.status = status; event.updatedAt = new Date(); }
     return;
@@ -120,7 +124,7 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
     algorithmVersion: ALGORITHM_VERSION,
     appVersion: APP_VERSION,
   };
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("cap");
@@ -161,7 +165,7 @@ export async function saveObservationalAngleCapture(uid, eventId, {
   };
   const isBaseline = captureType === CAPTURE_TYPE.BASELINE;
 
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("cap");
@@ -198,7 +202,7 @@ export async function saveObservationalAngleCapture(uid, eventId, {
 export async function confirmBaselineWithSymptom(uid, eventId, captureId, symptomSnapshot) {
   if (!uid || !eventId || !captureId) return null;
 
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     // symptom_pending일 때만 실행(중복 확정 방지).
     if (!event || event.status !== EVENT_STATUS.SYMPTOM_PENDING) return null;
@@ -282,7 +286,7 @@ export async function markBaselineCreated(uid, eventId, captureId, baselineCaptu
   if (!uid || !eventId) return null;
   const { week2DueAt, week4DueAt } = computeRecheckDueDates(baselineCapturedAt);
 
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     event.status = EVENT_STATUS.BASELINE_CREATED;
@@ -330,7 +334,7 @@ export async function markBaselineCreated(uid, eventId, captureId, baselineCaptu
 /** S08 — 재확인 완료 처리. qualityStatus도 함께 저장해 홈 카드가 캡처 조회 없이 경고를 띄울 수 있게 한다. */
 export async function completeRecheck(uid, eventId, recheckId, captureId, qualityStatus = "pass") {
   if (!uid || !eventId || !recheckId) return;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return;
     const recheck = event.rechecks.find((r) => r.id === recheckId);
@@ -361,7 +365,7 @@ export async function completeRecheck(uid, eventId, recheckId, captureId, qualit
 export async function completeRecheckWithSymptom(uid, eventId, recheckId, captureId, symptomSnapshot) {
   if (!uid || !eventId || !recheckId || !captureId) return null;
 
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const recheck = event.rechecks.find((r) => r.id === recheckId);
@@ -400,7 +404,7 @@ export async function completeRecheckWithSymptom(uid, eventId, recheckId, captur
 
 export async function skipRecheck(uid, eventId, recheckId) {
   if (!uid || !eventId || !recheckId) return;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     const recheck = event?.rechecks.find((r) => r.id === recheckId);
     if (recheck) recheck.status = RECHECK_STATUS.SKIPPED;
@@ -422,7 +426,7 @@ export async function saveComparison(uid, eventId, { baselineCaptureId, currentC
     nonComparableReasons: nonComparableReasons ?? [],
     userPerceivedChange: userPerceivedChange ?? null,
   };
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("cmp");
@@ -445,7 +449,7 @@ export async function saveDecision(uid, eventId, { decisionType, decisionLabel, 
     startedAt: startedAt ?? new Date().toISOString(),
     memo: memo?.trim() || null,
   };
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("dec");
@@ -467,7 +471,7 @@ export async function saveOutcome(uid, eventId, { perceivedChange, continuedActi
     schemaVersion: V9_SCHEMA_VERSION,
     perceivedChange, continuedAction, note: note?.trim() || null,
   };
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     const id = nextDemoId("out");
@@ -493,7 +497,7 @@ function toJsDate(value) {
  */
 export async function getEventDetail(uid, eventId) {
   if (!uid || !eventId) return null;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     if (!event) return null;
     return {
@@ -527,7 +531,7 @@ export async function getEventDetail(uid, eventId) {
 
 export async function getCapture(uid, eventId, captureId) {
   if (!uid || !eventId || !captureId) return null;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     return event?.captures.find((c) => c.id === captureId) ?? null;
   }
@@ -548,7 +552,7 @@ const OPEN_STATUSES = new Set([
  */
 export async function getActiveV9Event(uid) {
   if (!uid) return null;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const events = getDemoEvents(uid);
     const candidate = [...events].reverse().find((e) => OPEN_STATUSES.has(e.status));
     if (!candidate) return null;
@@ -577,7 +581,7 @@ export async function getActiveV9Event(uid) {
  */
 export async function __debugForceRecheckDue(uid, eventId, dueType) {
   if (!MOCK_CAPTURE_ENABLED) return;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     const event = getDemoEvents(uid).find((e) => e.id === eventId);
     const recheck = event?.rechecks.find((r) => r.dueType === dueType);
     if (recheck) recheck.dueAt = new Date();
@@ -600,7 +604,7 @@ export async function __debugForceRecheckDue(uid, eventId, dueType) {
  */
 export async function resetV9DataForUser(uid) {
   if (!MOCK_CAPTURE_ENABLED || !uid) return;
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     demoEventsByUid.delete(uid);
     return;
   }
@@ -610,7 +614,7 @@ export async function resetV9DataForUser(uid) {
 
 export async function getV9EventHistory(uid, count = 20) {
   if (!uid) return [];
-  if (USE_DEMO_STORE) {
+  if (isDemoStore()) {
     return [...getDemoEvents(uid)].reverse().slice(0, count);
   }
   const snap = await getDocs(query(eventsCol(uid), orderBy("createdAt", "desc"), limit(count)));

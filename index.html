@@ -39,5 +39,86 @@
       </div>
     </div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- RC1.2.2 P0-3 — main 모듈 자체가 실행되지 않는 경우(chunk fetch 실패, 구문 파싱
+         실패 등 module script가 죽는 상황)를 위한 watchdog. 일반 script라서 module이
+         전혀 평가되지 않아도 이 코드는 돈다. -->
+    <script>
+      (function () {
+        var BOOT_TIMEOUT_MS = 8000;
+        var RECOVERY_KEY = "jointrun_boot_recovery";
+        var diagCode = "bootstrap_timeout";
+
+        // module script 로드 자체가 실패하면 그 원인을 코드로 구분해둔다.
+        window.addEventListener(
+          "error",
+          function (event) {
+            var t = event.target;
+            if (t && t.tagName === "SCRIPT" && t.type === "module") {
+              diagCode = "app_chunk_fetch_failed";
+            } else if (event.message && /SyntaxError|Unexpected/i.test(event.message)) {
+              diagCode = "app_chunk_parse_failed";
+            }
+          },
+          true
+        );
+
+        function showFailure(code) {
+          var root = document.getElementById("root");
+          if (!root) return;
+          root.innerHTML =
+            '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;' +
+            'justify-content:center;background:#f8fafc;padding:24px;text-align:center;' +
+            "font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif;\">" +
+            '<p style="font-size:16px;font-weight:600;color:#0f172a;margin-bottom:8px;">앱 초기화를 완료하지 못했습니다</p>' +
+            '<p style="font-size:13px;color:#94a3b8;margin-bottom:20px;">진단 코드: ' + code + "</p>" +
+            '<button type="button" id="jointrun-boot-reload" style="padding:10px 24px;border-radius:8px;' +
+            'background:#2563eb;color:white;border:none;font-size:14px;font-weight:600;">새로고침</button>' +
+            "</div>";
+          var btn = document.getElementById("jointrun-boot-reload");
+          if (btn) btn.onclick = function () { window.location.reload(); };
+        }
+
+        // 자동 복구는 딱 한 번만 — 구버전 SW/캐시가 원인일 때 사용자가 반복 새로고침하지
+        // 않게 하되, 두 번째 실패에서는 무한 새로고침 대신 오류 화면을 유지한다.
+        function recoverOnce(code) {
+          var already = false;
+          try { already = sessionStorage.getItem(RECOVERY_KEY) === "1"; } catch (e) { already = true; }
+          if (already) { showFailure(code); return; }
+          try { sessionStorage.setItem(RECOVERY_KEY, "1"); } catch (e) { /* 저장 불가면 그냥 진행 */ }
+
+          var done = function () {
+            var u = new URL(window.location.href);
+            u.searchParams.set("jr_boot", String(Date.now()));
+            window.location.replace(u.toString());
+          };
+
+          var pending = [];
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            pending.push(
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }).catch(function () {})
+            );
+          }
+          if (window.caches && caches.keys) {
+            pending.push(
+              caches.keys().then(function (keys) {
+                return Promise.all(
+                  keys.filter(function (k) { return k.indexOf("jointrun-") === 0; })
+                      .map(function (k) { return caches.delete(k); })
+                );
+              }).catch(function () {})
+            );
+          }
+          Promise.all(pending).then(done, done);
+        }
+
+        setTimeout(function () {
+          if (window.__JOINTRUN_BOOTED__) return; // main.jsx가 실행됐으면 아무것도 하지 않는다
+          recoverOnce(diagCode);
+        }, BOOT_TIMEOUT_MS);
+      })();
+    </script>
   </body>
 </html>

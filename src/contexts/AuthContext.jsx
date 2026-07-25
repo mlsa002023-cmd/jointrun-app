@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { FIREBASE_ENABLED, auth, db } from "../firebase/config";
+import { FIREBASE_ENABLED, db, initFirebase, getAuthInstance, isFirestoreReady } from "../firebase/config";
 
 import {
   createUserWithEmailAndPassword,
@@ -17,10 +17,13 @@ import {
 
 const AuthContext = createContext(null);
 
-const googleProvider = FIREBASE_ENABLED ? new GoogleAuthProvider() : null;
+// RC1.2.2 P0-3 — 최상위에서 SDK 객체를 만들지 않는다(모듈 evaluation 실패 방지).
+function makeGoogleProvider() {
+  return new GoogleAuthProvider();
+}
 
 async function upsertUserDoc(user) {
-  if (!FIREBASE_ENABLED || !db) return;
+  if (!FIREBASE_ENABLED || !isFirestoreReady()) return;
   try {
     const ref = doc(db, "users", user.uid);
     const snap = await getDoc(ref);
@@ -61,8 +64,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!FIREBASE_ENABLED || !auth) {
+    if (!FIREBASE_ENABLED) {
       setCurrentUser(DEMO_USER);
+      setAuthLoading(false);
+      return;
+    }
+
+    // RC1.2.2 P0-3 — 여기서 처음으로 Firebase를 초기화한다. 실패해도 throw되지 않으므로
+    // App 모듈은 이미 정상 로드된 상태이고, 화면에는 명확한 오류 코드가 표시된다.
+    const { ok, auth: authInstance, error } = initFirebase();
+    if (!ok || !authInstance) {
+      setAuthError(error || "firebase_init_failed");
       setAuthLoading(false);
       return;
     }
@@ -77,7 +89,7 @@ export function AuthProvider({ children }) {
     }, AUTH_INIT_TIMEOUT_MS);
 
     const unsubscribe = onAuthStateChanged(
-      auth,
+      authInstance,
       (user) => {
         if (settled) return; // 타임아웃 이후 늦게 온 응답은 재시도 흐름과 겹치지 않게 무시
         settled = true;
@@ -105,7 +117,7 @@ export function AuthProvider({ children }) {
     if (!FIREBASE_ENABLED) { setCurrentUser(DEMO_USER); return; }
     setAuthError(null);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(getAuthInstance(), email, password);
       if (displayName) await updateProfile(cred.user, { displayName });
       await upsertUserDoc({ ...cred.user, displayName });
     } catch (e) {
@@ -118,7 +130,7 @@ export function AuthProvider({ children }) {
     if (!FIREBASE_ENABLED) { setCurrentUser(DEMO_USER); return; }
     setAuthError(null);
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(getAuthInstance(), email, password);
       await upsertUserDoc(cred.user);
     } catch (e) {
       setAuthError(e.message);
@@ -130,7 +142,7 @@ export function AuthProvider({ children }) {
     if (!FIREBASE_ENABLED) { setCurrentUser(DEMO_USER); return; }
     setAuthError(null);
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
+      const cred = await signInWithPopup(getAuthInstance(), makeGoogleProvider());
       await upsertUserDoc(cred.user);
     } catch (e) {
       if (e.code !== "auth/popup-closed-by-user") {
@@ -142,14 +154,14 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     if (!FIREBASE_ENABLED) { setCurrentUser(null); return; }
-    try { await signOut(auth); } catch (e) { console.warn("logout 실패:", e); }
+    try { await signOut(getAuthInstance()); } catch (e) { console.warn("logout 실패:", e); }
   }, []);
 
   const resetPassword = useCallback(async (email) => {
     if (!FIREBASE_ENABLED) return;
     setAuthError(null);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(getAuthInstance(), email);
     } catch (e) {
       setAuthError(e.message);
       throw e;

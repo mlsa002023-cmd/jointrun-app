@@ -8,7 +8,9 @@ import JOINTRUNUnified from "./components/JOINTRUNShell";
 function AuthConnectionError({ code, onRetry }) {
   const message = code === "connection_timeout"
     ? "서버 연결이 지연되고 있습니다"
-    : "서버에 연결하지 못했습니다";
+    : code === "firebase_init_failed"
+      ? "서버 설정을 확인하지 못했습니다"
+      : "서버에 연결하지 못했습니다";
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f8fafc",padding:24,textAlign:"center"}}>
       <p style={{fontSize:16,fontWeight:600,color:"#0f172a",marginBottom:8}}>{message}</p>

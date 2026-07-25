@@ -14,18 +14,14 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
-    target: "es2020",
-    rollupOptions: {
-      external: [],
-      output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          firebase: ["firebase/app", "firebase/auth", "firebase/firestore"],
-          charts: ["recharts"],
-          lucide: ["lucide-react"],
-        },
-      },
-    },
+    // RC1.2.2 P0-3 — 실기기 Safari(WebKit) 부팅 실패를 진단하면서 보수적인 타깃으로 내렸다.
+    // es2020은 iOS Safari 14~15에서 optional chaining 등 일부 문법·API 지원이 애매한 구간이
+    // 있어, 지원 범위가 명확한 safari15로 고정한다.
+    target: "safari15",
+    // manualChunks를 제거하고 Rollup 기본 전략을 쓴다. 예전 수동 분할(react/firebase/
+    // charts/lucide)은 첫 로그인 화면 하나를 띄우는 데도 여러 chunk를 받아오게 만들어
+    // 실패 지점을 늘렸고, react 청크가 0.06 kB로 사실상 비는 등 의도대로 동작하지도 않았다.
+    // 이제 첫 화면은 단일 엔트리 청크로 로드되고, MediaPipe만 카메라 진입 시 동적 로드된다.
   },
   optimizeDeps: {
     exclude: ["@mediapipe/tasks-vision"],
