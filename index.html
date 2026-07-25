@@ -29,7 +29,15 @@
     <meta name="format-detection" content="telephone=no" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- RC1.2.2 P0-2 — App.jsx 로드 전에도 빈 화면 대신 이 부팅 표시가 보인다.
+         main.jsx가 React를 렌더링하면 #root 내용이 통째로 교체된다. -->
+    <div id="root">
+      <div
+        style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif;color:#64748b;font-size:14px;"
+      >
+        JOINTRUN을 불러오는 중입니다
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

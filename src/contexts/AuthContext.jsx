@@ -43,10 +43,22 @@ async function upsertUserDoc(user) {
 
 const DEMO_USER = { uid: "demo", email: "demo@jointrun.app", displayName: "데모 사용자" };
 
+// RC1.2.2 P0-2 — onAuthStateChanged가 성공도 실패도 아닌 채 계속 무응답이면(네트워크
+// 차단·잘못된 Firebase 설정 등) authLoading이 영원히 true로 남아 로그인 화면조차
+// 못 띄운다. 12초 안에 응답이 없으면 타임아웃으로 간주하고 명확한 오류 화면을 띄운다.
+const AUTH_INIT_TIMEOUT_MS = 12000;
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
+
+  const retryAuthInit = useCallback(() => {
+    setAuthError(null);
+    setAuthLoading(true);
+    setRetryKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!FIREBASE_ENABLED || !auth) {
@@ -54,12 +66,40 @@ export function AuthProvider({ children }) {
       setAuthLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.error("[Auth] 초기화 타임아웃(12초)");
+      setAuthError("connection_timeout");
       setAuthLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+    }, AUTH_INIT_TIMEOUT_MS);
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        if (settled) return; // 타임아웃 이후 늦게 온 응답은 재시도 흐름과 겹치지 않게 무시
+        settled = true;
+        clearTimeout(timeoutId);
+        setCurrentUser(user);
+        setAuthLoading(false);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        console.error("[Auth] onAuthStateChanged 오류:", error);
+        setAuthError("connection_error");
+        setAuthLoading(false);
+      }
+    );
+
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
+  }, [retryKey]);
 
   const signup = useCallback(async (email, password, displayName) => {
     if (!FIREBASE_ENABLED) { setCurrentUser(DEMO_USER); return; }
@@ -118,7 +158,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      currentUser, authLoading, authError, setAuthError,
+      currentUser, authLoading, authError, setAuthError, retryAuthInit,
       signup, login, loginWithGoogle, logout, resetPassword,
       isDemo: !FIREBASE_ENABLED,
     }}>

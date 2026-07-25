@@ -11,6 +11,22 @@ export function registerServiceWorker() {
   // 보이는 문제를 일으킨다 — 프로덕션 빌드(dist)에서만 등록한다.
   if (import.meta.env.DEV) return;
 
+  // RC1.2.2 P0-2 — Preview에서 VITE_SERVICE_WORKER_ENABLED=false를 설정하면 SW를
+  // 아예 등록하지 않고, 이 기기에 이전 방문으로 이미 깔려있던 등록·캐시도 정리한다
+  // (UAT 중 PWA 캐시를 백색 화면 원인 후보에서 제외하기 위함). Production은 이 변수를
+  // 설정하지 않으므로 기존 동작 그대로 유지된다.
+  if (import.meta.env.VITE_SERVICE_WORKER_ENABLED === "false") {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((reg) => reg.unregister());
+    });
+    if (typeof caches !== "undefined") {
+      caches.keys().then((keys) => {
+        keys.filter((key) => key.startsWith("jointrun-")).forEach((key) => caches.delete(key));
+      });
+    }
+    return;
+  }
+
   window.addEventListener("load", () => {
     navigator.serviceWorker
       // updateViaCache: "none" — 브라우저 HTTP 캐시가 아니라 항상 네트워크에서 service-worker.js
