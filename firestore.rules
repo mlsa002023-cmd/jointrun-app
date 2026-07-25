@@ -83,13 +83,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
+      // RC1.2.2 P0 — Legacy scan/raw landmark 신규 저장 차단. 기존 문서 read만 유지하고
+      // create/update/delete는 전부 금지한다(향후 landmark 저장은 별도 동의·신규 스키마에서만).
       match /scans/{scanId} {
-        allow read, create: if request.auth != null && request.auth.uid == userId;
-        allow update, delete: if false; // 스캔 기록은 수정/삭제 불가 (데이터 무결성)
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create, update, delete: if false;
 
         match /raw/{rawId} {
-          allow read, create: if request.auth != null && request.auth.uid == userId;
-          allow update, delete: if false;
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create, update, delete: if false;
         }
       }
 

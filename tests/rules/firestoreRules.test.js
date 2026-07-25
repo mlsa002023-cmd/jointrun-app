@@ -331,6 +331,54 @@ describe("하위 컬렉션(captures/rechecks/comparisons) — 동일 원칙 적�
 });
 
 // ─────────────────────────────────────────────
+// RC1.2.2 P0 — Legacy scans/raw landmark 신규 저장 차단.
+// 대표 승인 데이터 정책: 기존 문서 read는 유지, 신규 create/update/delete는 전면 금지.
+// ─────────────────────────────────────────────
+describe("legacy scans/raw — 신규 저장 차단(RC1.2.2 P0)", () => {
+  const uid = "user-legacy";
+
+  async function seedLegacyScan() {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users", uid, "scans", "scan-old"), { createdAt: "legacy", note: "pre-P0" });
+      await setDoc(doc(db, "users", uid, "scans", "scan-old", "raw", "raw-old"), { landmarks: [{ x: 1 }] });
+    });
+  }
+
+  it("인증 사용자는 신규 scans 문서를 생성할 수 없다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await assertFails(setDoc(doc(db, "users", uid, "scans", "scan-new"), { createdAt: "now" }));
+  });
+
+  it("인증 사용자는 신규 raw 문서를 생성할 수 없다", async () => {
+    await seedLegacyScan();
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await assertFails(setDoc(doc(db, "users", uid, "scans", "scan-old", "raw", "raw-new"), { landmarks: [{ x: 2 }] }));
+  });
+
+  it("본인은 기존 scans/raw 문서를 읽을 수 있다", async () => {
+    await seedLegacyScan();
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await assertSucceeds(getDoc(doc(db, "users", uid, "scans", "scan-old")));
+    await assertSucceeds(getDoc(doc(db, "users", uid, "scans", "scan-old", "raw", "raw-old")));
+  });
+
+  it("타인은 기존 scans/raw 문서를 읽을 수 없다", async () => {
+    await seedLegacyScan();
+    const intruderDb = testEnv.authenticatedContext("user-b").firestore();
+    await assertFails(getDoc(doc(intruderDb, "users", uid, "scans", "scan-old")));
+    await assertFails(getDoc(doc(intruderDb, "users", uid, "scans", "scan-old", "raw", "raw-old")));
+  });
+
+  it("기존 scans/raw 문서는 수정·삭제할 수 없다(불변 원칙 유지)", async () => {
+    await seedLegacyScan();
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await assertFails(setDoc(doc(db, "users", uid, "scans", "scan-old"), { createdAt: "legacy", note: "edited" }));
+    await assertFails(deleteDoc(doc(db, "users", uid, "scans", "scan-old")));
+  });
+});
+
+// ─────────────────────────────────────────────
 // RC1.2.1 §1/§7 — 기준선 확정 원자성(transaction) 검증.
 // 에뮬레이터의 실제 transaction 의미론으로 rollback·재시도·중복 없음을 확인한다.
 // ─────────────────────────────────────────────
