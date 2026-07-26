@@ -236,9 +236,19 @@ describe("작은 ROM — 실패로 처리하지 않는다 (§7)", () => {
     });
   });
 
-  it("굴곡 포즈가 신전보다 작게 나와도 ROM은 음수가 되지 않는다", () => {
+  // P0-10 — 실기기에서 주먹을 쥐면 끝마디가 가려져 굴곡이 신전보다 작게 추정되는 경우가
+  // 있었다. 그때 0°를 값으로 남기면 "전혀 안 움직인다"로 오해되므로 관찰 불가(null)로 둔다.
+  it("굴곡이 신전보다 작게 나오면 0이 아니라 관찰 불가로 남긴다", () => {
     const obs = buildFingerJointObservations(aggOf({ dipFlex: 50 }), aggOf({ dipFlex: 30 }));
-    obs.forEach((o) => expect(o.dipActiveRomDeg).toBe(0));
+    obs.forEach((o) => expect(o.dipActiveRomDeg).toBeNull());
+  });
+
+  it("아주 작아도 실제로 관찰된 범위는 값으로 남긴다", () => {
+    const obs = buildFingerJointObservations(aggOf({ dipFlex: 40 }), aggOf({ dipFlex: 45 }));
+    obs.forEach((o) => {
+      expect(o.dipActiveRomDeg).toBeGreaterThan(0);
+      expect(o.dipActiveRomDeg).toBeLessThan(15);
+    });
   });
 });
 

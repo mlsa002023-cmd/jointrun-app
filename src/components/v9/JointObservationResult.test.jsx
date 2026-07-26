@@ -69,8 +69,15 @@ describe("JointObservationResult", () => {
     expect(screen.getByText(/계산하지 못했습니다/)).toBeInTheDocument();
   });
 
-  it("측정되지 않은 각도는 —로 표시한다", () => {
+  it("가동범위를 관찰하지 못하면 0°가 아니라 '관찰 어려움'으로 표시한다", () => {
     render(<JointObservationResult joints={[{ ...joints[0], dipActiveRomDeg: null }]} />);
+    const row = screen.getByTestId("joint-row-index");
+    expect(within(row).getAllByText("관찰 어려움").length).toBeGreaterThan(0);
+    expect(within(row).queryByText("0°")).toBeNull();
+  });
+
+  it("측정되지 않은 각도는 —로 표시한다", () => {
+    render(<JointObservationResult joints={[{ ...joints[0], dipExtensionPoseFlexionDeg: null }]} />);
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 });

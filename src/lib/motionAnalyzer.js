@@ -37,7 +37,11 @@ export function analyzePIPJoint(wl, mcp, pip, dip) {
   const fx = dot(distal, e1);
   const fy = dot(distal, e2);
   const fz = dot(distal, e3);
-  const flexion = Math.atan2(fy, fx) * (180 / Math.PI);
+  // RC1.2.2 P0-10 — palmNorm은 cross(indexMCP-wrist, pinkyMCP-wrist)라 왼손에서 부호가
+  // 뒤집힌다. 예전에는 atan2(fy, fx)를 그대로 써서 왼손이면 flexion이 음수가 되고
+  // Math.max(0, ...)에 걸려 항상 0이 됐다 — 왼손으로 측정하면 ROM·비교 화면이 전부 0°로
+  // 표시되던 원인이다. 굴곡의 크기는 손 좌우와 무관하므로 |fy|로 계산한다.
+  const flexion = Math.atan2(Math.abs(fy), fx) * (180 / Math.PI);
   const deviation = Math.atan2(fz, fx) * (180 / Math.PI);
   const direction = fz > 0 ? "radial" : "ulnar";
   return { flexion: Math.max(0, flexion), deviation: Math.abs(deviation), deviationDir: direction };

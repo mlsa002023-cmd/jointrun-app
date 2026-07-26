@@ -239,9 +239,14 @@ export function buildFingerJointObservations(extensionAgg, flexionAgg) {
 
   return extensionAgg.map((ext, idx) => {
     const flex = flexionAgg[idx];
+    // RC1.2.2 P0-10 — 굴곡 포즈에서 얻은 값이 신전 포즈보다 크지 않으면 가동범위를 관찰한
+    // 것이 아니다(주먹을 쥐면 끝마디가 손바닥에 가려져 tip 추정이 무너지는 경우가 실제로
+    // 있다). 이때 0°를 값처럼 보여주면 "움직이지 않는다"로 오해되므로 null로 남기고
+    // 화면에서는 "관찰 어려움"으로 표시한다. 아주 작지만 실제로 관찰된 범위는 그대로 쓴다.
     const romOf = (maxFlex, extFlex) => {
       if (!Number.isFinite(maxFlex) || !Number.isFinite(extFlex)) return null;
-      return Math.max(0, maxFlex - extFlex);
+      const diff = maxFlex - extFlex;
+      return diff > 0 ? diff : null;
     };
 
     return {

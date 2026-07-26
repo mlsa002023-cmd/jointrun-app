@@ -14,6 +14,12 @@ function deg(v) {
   return Number.isFinite(v) ? `${Math.round(v)}°` : "—";
 }
 
+// RC1.2.2 P0-10 — 가동범위를 관찰하지 못한 경우(주먹에서 끝마디가 가려져 굴곡을 신뢰할 수
+// 없을 때)는 0°가 아니라 관찰 불가로 적는다. 0°는 "전혀 안 움직인다"로 오해된다.
+function romText(v) {
+  return Number.isFinite(v) ? `${Math.round(v)}°` : "관찰 어려움";
+}
+
 /** 부호 있는 편위각을 "크기 + 방향"으로 적는다. 부호를 그대로 노출하지 않는다. */
 function deviationText(deviationDeg, direction) {
   if (!Number.isFinite(deviationDeg)) return "—";
@@ -62,8 +68,8 @@ export default function JointObservationResult({ joints }) {
               </div>
               <div>
                 <div className="text-[9px] text-slate-500 leading-tight">끝마디<br />활동 범위</div>
-                <div className="text-sm font-black text-[#122A5C] font-mono">
-                  {deg(f.dipActiveRomDeg)}
+                <div className={`font-black text-[#122A5C] ${Number.isFinite(f.dipActiveRomDeg) ? "text-sm font-mono" : "text-[11px]"}`}>
+                  {romText(f.dipActiveRomDeg)}
                 </div>
               </div>
             </div>
@@ -72,7 +78,7 @@ export default function JointObservationResult({ joints }) {
             <div className="mt-1.5 pt-1.5 border-t border-slate-200 text-[9px] text-slate-500">
               중간마디(PIP) · 편 상태 {deg(f.pipExtensionPoseFlexionDeg)}
               {" · "}치우침 {deviationText(f.pipExtensionPoseDeviationDeg, f.pipDeviationDirection)}
-              {" · "}활동 범위 {deg(f.pipActiveRomDeg)}
+              {" · "}활동 범위 {romText(f.pipActiveRomDeg)}
             </div>
           </div>
         ))}
