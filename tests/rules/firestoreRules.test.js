@@ -240,6 +240,41 @@ describe("하위 컬렉션(captures/rechecks/comparisons) — 동일 원칙 적�
     }));
   });
 
+  const dipContour = {
+    measurementVersion: "dip-contour-v1",
+    fingers: [{ key: "index", name: "검지", dipWidthRatio: 1.18, radialHalfWidthRatio: 0.62,
+                ulnarHalfWidthRatio: 0.56, contourAsymmetryRatio: 0.05, validFrames: 9, stabilityMad: 0.02 }],
+    qualityFlags: [],
+  };
+
+  it("P0-9 captures: DIP 외곽 폭 관찰(dipContourObservation)을 저장할 수 있다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertSucceeds(addDoc(col, { ...validAngleCapture, dipContourObservation: dipContour }));
+  });
+
+  it("P0-9 captures: 관찰 실패 시 null로 저장할 수 있다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertSucceeds(addDoc(col, { ...validAngleCapture, dipContourObservation: null }));
+  });
+
+  it("P0-9 captures: 허용되지 않은 키(이미지·윤곽 좌표 등)가 섞이면 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, {
+      ...validAngleCapture,
+      dipContourObservation: { ...dipContour, contourPoints: [{ x: 1, y: 2 }] },
+    }));
+    await assertFails(addDoc(col, {
+      ...validAngleCapture,
+      dipContourObservation: { ...dipContour, maskPng: "data:image/png;base64,AAAA" },
+    }));
+  });
+
   it("P0-8 captures: deviationDirection이 허용 값이 아니면 거부", async () => {
     const db = testEnv.authenticatedContext(uid).firestore();
     await seedEvent(db);

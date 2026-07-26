@@ -53,6 +53,10 @@ service cloud.firestore {
         && (!('perFingerJointObservation' in data) || data.perFingerJointObservation is list)
         && (!('deviationDirection' in data) || data.deviationDirection == null
             || data.deviationDirection in ['radial', 'ulnar', 'neutral'])
+        // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. 파생 비율만 담긴 map이거나 null이어야 한다.
+        && (!('dipContourObservation' in data) || data.dipContourObservation == null
+            || (data.dipContourObservation is map
+                && data.dipContourObservation.keys().hasOnly(['measurementVersion', 'fingers', 'qualityFlags'])))
         && hasNoForbiddenCaptureFields(data);
     }
 

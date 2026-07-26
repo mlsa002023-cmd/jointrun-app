@@ -143,7 +143,7 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
  */
 export async function saveObservationalAngleCapture(uid, eventId, {
   handSide, perFingerObservedRomDeg, averageObservedRomDeg,
-  perFingerJointObservation, deviationDirection,
+  perFingerJointObservation, deviationDirection, dipContourObservation,
   captureType = CAPTURE_TYPE.BASELINE, qualityFlags,
 }) {
   if (!uid || !eventId) return null;
@@ -158,6 +158,9 @@ export async function saveObservationalAngleCapture(uid, eventId, {
     // (원본 사진·영상·landmark는 저장하지 않는다 — §9).
     perFingerJointObservation: perFingerJointObservation ?? [],
     deviationDirection: deviationDirection ?? null,
+    // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. 관찰에 실패하면 아예 싣지 않는다(0 저장 금지).
+    // 파생 비율·유효 프레임 수·안정성 값만 담고 이미지·마스크·윤곽 좌표는 담지 않는다.
+    dipContourObservation: dipContourObservation ?? null,
     // 이전 세대 리더(비교 화면 등) 호환을 위해 손가락 전체 활동 가동범위도 함께 남긴다.
     perFingerObservedRomDeg: perFingerObservedRomDeg ?? [],
     averageObservedRomDeg: averageObservedRomDeg ?? null,

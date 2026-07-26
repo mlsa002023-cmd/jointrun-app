@@ -21,7 +21,12 @@ import {
   analyzeFingerJoints, aggregateJointSamples, buildFingerJointObservations, summarizeDeviationDirection,
 } from "../lib/jointObservation";
 import { assessPoseMeasurement, assessMeasurement } from "../lib/measurementQuality";
+import {
+  measureFrameDipContours, aggregateDipContourFrames, buildDipContourPayload,
+  CONTOUR_FRAME_TARGET,
+} from "../lib/dipContour";
 import JointObservationResult from "./v9/JointObservationResult";
+import DipContourResult from "./v9/DipContourResult";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
 import { FEATURE_FLAGS, shouldShowQaTools } from "../config/featureFlags";
 import { trackKpiEvent } from "../lib/analytics";
@@ -92,6 +97,40 @@ function drawSkeleton(landmarks, canvas, videoW, videoH) {
   });
 }
 
+// RC1.2.2 P0-9 — 현재 video 프레임을 오프스크린 캔버스에 그려 픽셀을 읽고, 손가락별 DIP
+// 외곽 폭 비율만 돌려준다. ImageData는 이 함수를 벗어나지 않는다(§7 이미지 저장 금지).
+// 해상도는 계산에 충분한 선에서 낮춰 성능 부담을 줄인다.
+const DIP_CONTOUR_MAX_WIDTH = 480;
+
+function measureDipContourFromVideo(video, landmarks, canvasRef) {
+  try {
+    const vw = video?.videoWidth ?? 0;
+    const vh = video?.videoHeight ?? 0;
+    if (!vw || !vh || !landmarks) return null;
+
+    const scale = Math.min(1, DIP_CONTOUR_MAX_WIDTH / vw);
+    const w = Math.round(vw * scale);
+    const h = Math.round(vh * scale);
+
+    let canvas = canvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvasRef.current = canvas;
+    }
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    return measureFrameDipContours(imageData, landmarks);
+  } catch {
+    // 캔버스 접근 실패(보안 제한 등)는 관찰 생략으로 처리한다 — 촬영 자체를 막지 않는다.
+    return null;
+  }
+}
+
 function clearCanvas(canvas) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -115,6 +154,10 @@ export default function MotionScanPage({
   const SAMPLE_WINDOW_MS = 1500; // 마지막 1.5초 구간만 대표값 계산에 사용 (그 이전 프레임은 자동 폐기)
   const rawFramesRef = useRef({}); // { spread: [...], ok: [...], fist: [...] } — 포즈별 원본 landmark 프레임 (raw 계층 저장용)
   const RAW_FRAMES_PER_POSE = 20; // Firestore 문서 용량 보호를 위한 상한 (포즈당 마지막 20프레임만 보존)
+  // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. spread 포즈 동안 프레임마다 즉시 계산하고 파생 비율만 남긴다.
+  // 픽셀·마스크·윤곽 좌표는 어디에도 보관하지 않는다(§7).
+  const dipContourFramesRef = useRef([]);
+  const dipContourCanvasRef = useRef(null);
 
   // phase: idle | camera_starting | ai_loading | scanning | camera_error | ai_error | completed
   const [phase, setPhase] = useState("idle");
@@ -305,6 +348,16 @@ export default function MotionScanPage({
           (s) => now - s.ts <= SAMPLE_WINDOW_MS
         );
 
+        // RC1.2.2 P0-9 — spread 포즈 동안에만 DIP 외곽 폭을 관찰한다(별도 촬영 단계 없음, §1).
+        // 프레임 픽셀은 이 자리에서 비율로 환산하고 즉시 버린다 — 이미지·윤곽 좌표는 남기지 않는다.
+        if (
+          POSE_GUIDE[poseIndexRef.current].id === "spread" &&
+          dipContourFramesRef.current.length < CONTOUR_FRAME_TARGET
+        ) {
+          const measured = measureDipContourFromVideo(video, result.landmarks[0], dipContourCanvasRef);
+          if (measured) dipContourFramesRef.current.push(measured);
+        }
+
         // ── 연속 유지 체크: 최근 0.6초 동안 계속 올바른 포즈였다면, 7초/6초 타이머를 기다리지 않고 즉시 확정한다.
         // 이게 "인식되면 바로바로 다음 동작으로 넘어간다"의 핵심이다.
         if (!poseConfirmedRef.current) {
@@ -426,6 +479,12 @@ export default function MotionScanPage({
         flexion: assessPoseMeasurement(flexionFrames, flexionAgg),
       });
 
+      // ── RC1.2.2 P0-9 — DIP 외곽 폭 관찰 집계 ──
+      // 실패하면 0을 채우지 않고 payload를 만들지 않는다(§6). 각도 관찰은 그대로 진행된다.
+      const dipContourAgg = aggregateDipContourFrames(dipContourFramesRef.current);
+      const dipContour = buildDipContourPayload(dipContourAgg);
+      dipContourFramesRef.current = []; // 프레임 파생값도 즉시 폐기
+
       // 화면 표시용 결과. 완료 화면은 DIP를 먼저 읽는다(§8).
       const result = {
         romDeg: avgRom,
@@ -433,6 +492,8 @@ export default function MotionScanPage({
         joints: jointObservations,
         deviationDirection,
         measurementOk: measurement.ok,
+        dipContour,
+        dipContourFlags: dipContourAgg.flags,
         fingers: perFinger.map((f) => ({ key: f.key, name: f.name, flexion: f.rom, score: f.score })),
       };
       setScanResult(result);
@@ -447,11 +508,13 @@ export default function MotionScanPage({
           // P0-8 — 관절별 관찰이 주 기록. 파생 각도와 품질값만 담는다(원본 좌표 없음).
           perFingerJointObservation: jointObservations,
           deviationDirection,
+          // P0-9 — 관찰에 성공한 경우에만 싣는다(실패 시 0 저장 금지).
+          dipContourObservation: dipContour,
           // 손가락 전체 활동 가동범위(3순위) — 기존 비교 화면 호환을 위해 함께 남긴다.
           perFingerObservedRomDeg: perFinger.map((f) => ({ key: f.key, name: f.name, romDeg: f.rom })),
           averageObservedRomDeg: avgRom,
           qualityStatus: "pass", // 3개 동작 모두 확정됨(기록 완료). 별도 비교 품질 판정은 아님.
-          qualityFlags: measurement.flags,
+          qualityFlags: [...measurement.flags, ...dipContourAgg.flags],
         };
       } else {
         // ── 레거시 경로(absoluteScoreUiEnabled 뒤): 기존 점수 파이프라인 유지 ──
@@ -803,6 +866,14 @@ export default function MotionScanPage({
                 <>
                   {/* RC1.2.2 P0-8 §8 — 평균 ROM을 메인에서 빼고 DIP 끝마디를 먼저 보여준다. */}
                   <JointObservationResult joints={scanResult.joints} />
+                  {/* P0-9 §8 — 외곽 폭 관찰은 QA 허용 계정에만 먼저 노출한다. */}
+                  {qaAllowed && (
+                    <DipContourResult
+                      observation={scanResult.dipContour}
+                      flags={scanResult.dipContourFlags}
+                      onRetake={restart}
+                    />
+                  )}
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                       <div className="text-[9px] text-slate-500">사용 손</div>
