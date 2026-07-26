@@ -154,7 +154,9 @@ function estimateBackground(img, stations, perp, radius) {
  */
 export function measureFingerDipContour(imageData, landmarks, chain, radialSign) {
   const flags = [];
-  const fail = (flag) => ({ ok: false, flags: [flag] });
+  // RC1.2.2 P0-11 — 실패해도 오버레이가 "어디를 보고 있는지"는 그려야 하므로,
+  // 가능한 만큼의 표시용 geometry를 함께 돌려준다(저장 payload에는 들어가지 않는다).
+  const fail = (flag, displayGeometry = null) => ({ ok: false, flags: [flag], displayGeometry });
 
   const w = imageData?.width ?? 0;
   const h = imageData?.height ?? 0;
@@ -176,6 +178,16 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
 
   const radius = Math.max(6, axisLen * SCAN_HALF_SPAN_RATIO);
 
+  // 표시용 중심축(짧게) — DIP를 중심으로 PIP↔TIP 방향 일부만 그린다.
+  const axisHalf = axisLen * 0.18;
+  const axisGeometry = {
+    dipCenter: { x: dip.x, y: dip.y },
+    axisStart: { x: dip.x - axis.x * axisHalf, y: dip.y - axis.y * axisHalf },
+    axisEnd: { x: dip.x + axis.x * axisHalf, y: dip.y + axis.y * axisHalf },
+    radialEdge: null,
+    ulnarEdge: null,
+  };
+
   // DIP 주변 주사 위치와, 비교 기준이 되는 인접 지골(중위지골) 몸통 주사 위치.
   const along = (from, to, t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
   const dipStations = [-0.12, -0.06, 0, 0.06, 0.12].map((t) => ({
@@ -188,10 +200,10 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
   const outOfBounds = [...dipStations, ...bodyStations].some(
     (c) => c.x < 0 || c.y < 0 || c.x >= w || c.y >= h
   );
-  if (outOfBounds) return fail(CONTOUR_FLAG.ROI_OUT_OF_BOUNDS);
+  if (outOfBounds) return fail(CONTOUR_FLAG.ROI_OUT_OF_BOUNDS, axisGeometry);
 
   const bg = estimateBackground(imageData, [...dipStations, ...bodyStations], perp, radius);
-  if (!bg) return fail(CONTOUR_FLAG.LOW_CONTRAST);
+  if (!bg) return fail(CONTOUR_FLAG.LOW_CONTRAST, axisGeometry);
 
   // 축 위 픽셀(=손가락)과 배경의 대비가 충분한지 확인(§6 배경 대비 부족).
   const axisSamples = dipStations
@@ -199,7 +211,7 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
     .filter(Boolean)
     .map((rgb) => rgbDistance(rgb, bg));
   const contrast = median(axisSamples);
-  if (contrast === null || contrast < MIN_CONTRAST) return fail(CONTOUR_FLAG.LOW_CONTRAST);
+  if (contrast === null || contrast < MIN_CONTRAST) return fail(CONTOUR_FLAG.LOW_CONTRAST, axisGeometry);
 
   const runFor = (stations) => stations.map((c) => scanLine(imageData, c, perp, radius, bg));
   const dipRuns = runFor(dipStations);
@@ -208,11 +220,11 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
   // 윤곽이 끊겨 중심 구간을 못 찾으면 실패(§6 윤곽 단절).
   const dipValid = dipRuns.filter(Boolean);
   const bodyValid = bodyRuns.filter(Boolean);
-  if (dipValid.length < 3 || bodyValid.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN);
+  if (dipValid.length < 3 || bodyValid.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, axisGeometry);
 
   // 반경 끝까지 손가락이면 옆 손가락과 붙은 것으로 본다(§6 손가락 겹침).
   if (dipValid.filter((r) => r.touchedEdge).length > dipValid.length / 2) {
-    return fail(CONTOUR_FLAG.FINGER_OVERLAP);
+    return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
   }
 
   const dipRadial = median(dipValid.map((r) => r.radial));
@@ -220,9 +232,9 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
   const dipWidth = dipRadial + dipUlnar;
   const bodyWidth = median(bodyValid.map((r) => r.radial + r.ulnar));
 
-  if (!(bodyWidth > 0) || !(dipWidth > 0)) return fail(CONTOUR_FLAG.CONTOUR_BROKEN);
-  if (dipWidth >= radius * 2 * OVERLAP_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP);
-  if (dipWidth / bodyWidth > MAX_PLAUSIBLE_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP);
+  if (!(bodyWidth > 0) || !(dipWidth > 0)) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, axisGeometry);
+  if (dipWidth >= radius * 2 * OVERLAP_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
+  if (dipWidth / bodyWidth > MAX_PLAUSIBLE_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
 
   return {
     ok: true,
@@ -233,6 +245,13 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
     ulnarHalfWidthRatio: dipUlnar / bodyWidth,
     // 좌우 비대칭: + = 엄지쪽이 넓음, - = 새끼쪽이 넓음.
     contourAsymmetryRatio: (dipRadial - dipUlnar) / dipWidth,
+    // RC1.2.2 P0-11 — 화면에 캘리퍼를 그리기 위한 임시 좌표. 프레임 렌더 직후 폐기하며
+    // buildDipContourPayload가 절대 담지 않는다(윤곽 path나 mask도 만들지 않는다).
+    displayGeometry: {
+      ...axisGeometry,
+      radialEdge: { x: dip.x + perp.x * dipRadial, y: dip.y + perp.y * dipRadial },
+      ulnarEdge: { x: dip.x - perp.x * dipUlnar, y: dip.y - perp.y * dipUlnar },
+    },
   };
 }
 

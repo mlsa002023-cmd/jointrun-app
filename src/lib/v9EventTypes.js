@@ -155,6 +155,12 @@ export const CONTINUED_ACTION_LABEL = {
 
 // 05_DATA_ANALYTICS_SPEC.md §3 + RC1 디자인 통합 지시서 §7 — 실제로 발생시키는 이벤트 전체.
 export const V9_ANALYTICS_EVENTS = {
+  // RC1.2.2 P0-11/P0-12 — 오버레이·요약 사용 여부만 남긴다. 각도·외곽값 원문, raw 좌표,
+  // 상세 수치, 직접 식별자는 절대 파라미터에 담지 않는다.
+  DIP_OVERLAY_STARTED: "dip_contour_overlay_started",
+  DIP_OVERLAY_COMPLETED: "dip_contour_overlay_completed",
+  DIP_OVERLAY_RETRY_SHOWN: "dip_contour_overlay_retry_shown",
+  OBSERVATION_SUMMARY_VIEWED: "observation_summary_viewed",
   ONBOARDING_STARTED: "onboarding_started",
   CONSENT_COMPLETED: "consent_completed",
   TRIGGER_SELECTED: "trigger_selected",

@@ -27,6 +27,9 @@ import {
 } from "../lib/dipContour";
 import JointObservationResult from "./v9/JointObservationResult";
 import DipContourResult from "./v9/DipContourResult";
+import ObservationSummaryCard from "./v9/ObservationSummaryCard";
+import { buildObservationSummary, SUMMARY_MODE } from "../lib/observationSummary";
+import { deriveOverlayModel, drawCaliperOverlay } from "../lib/dipCaliperOverlay";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
 import { FEATURE_FLAGS, shouldShowQaTools } from "../config/featureFlags";
 import { trackKpiEvent } from "../lib/analytics";
@@ -158,6 +161,12 @@ export default function MotionScanPage({
   // 픽셀·마스크·윤곽 좌표는 어디에도 보관하지 않는다(§7).
   const dipContourFramesRef = useRef([]);
   const dipContourCanvasRef = useRef(null);
+  // P0-11 — 손가락별 유효 프레임 수와 마지막 오버레이 모델. rAF 안에서만 갱신하고
+  // 상태 문구가 실제로 바뀔 때만 setState 한다(§7 매 프레임 setState 금지).
+  const dipValidCountsRef = useRef({});
+  const caliperModelRef = useRef(null);
+  const caliperStatusRef = useRef("");
+  const [caliperStatus, setCaliperStatus] = useState("");
 
   // phase: idle | camera_starting | ai_loading | scanning | camera_error | ai_error | completed
   const [phase, setPhase] = useState("idle");
@@ -281,6 +290,11 @@ export default function MotionScanPage({
     poseIndexRef.current = 0;
     poseResultsRef.current = {};
     rawFramesRef.current = {};
+    dipContourFramesRef.current = [];
+    dipValidCountsRef.current = {};
+    caliperModelRef.current = null;
+    caliperStatusRef.current = "";
+    setCaliperStatus("");
     setPoseResults({});
     setPoseIndex(0);
     setPoseRetryMsg(null);
@@ -355,7 +369,22 @@ export default function MotionScanPage({
           dipContourFramesRef.current.length < CONTOUR_FRAME_TARGET
         ) {
           const measured = measureDipContourFromVideo(video, result.landmarks[0], dipContourCanvasRef);
-          if (measured) dipContourFramesRef.current.push(measured);
+          if (measured) {
+            dipContourFramesRef.current.push(measured);
+            measured.forEach((m) => {
+              if (m.ok) dipValidCountsRef.current[m.key] = (dipValidCountsRef.current[m.key] ?? 0) + 1;
+            });
+          }
+          // 오버레이 모델은 매 프레임 만들되, 화면 문구는 바뀔 때만 반영한다.
+          caliperModelRef.current = deriveOverlayModel(measured, dipValidCountsRef.current, true);
+          if (caliperModelRef.current.statusText !== caliperStatusRef.current) {
+            caliperStatusRef.current = caliperModelRef.current.statusText;
+            setCaliperStatus(caliperModelRef.current.statusText);
+          }
+        } else if (POSE_GUIDE[poseIndexRef.current].id !== "spread") {
+          // spread가 아니면 오버레이를 숨긴다(§1).
+          caliperModelRef.current = null;
+          if (caliperStatusRef.current) { caliperStatusRef.current = ""; setCaliperStatus(""); }
         }
 
         // ── 연속 유지 체크: 최근 0.6초 동안 계속 올바른 포즈였다면, 7초/6초 타이머를 기다리지 않고 즉시 확정한다.
@@ -378,6 +407,13 @@ export default function MotionScanPage({
         }
 
         drawSkeleton(result.landmarks[0], canvas, video.videoWidth || 640, video.videoHeight || 480);
+        // P0-11 — skeleton과 같은 캔버스·같은 좌표 공간에 캘리퍼를 덧그린다(별도 canvas 없음).
+        if (caliperModelRef.current) {
+          drawCaliperOverlay(canvas.getContext("2d"), caliperModelRef.current, {
+            qaDetail: qaAllowed && debugVisibleRef.current,
+            scale: Math.max(1, (video.videoWidth || 640) / 640),
+          });
+        }
       } else {
         setHandDetected(false);
         setLiveMetrics(null);
@@ -485,8 +521,23 @@ export default function MotionScanPage({
       const dipContour = buildDipContourPayload(dipContourAgg);
       dipContourFramesRef.current = []; // 프레임 파생값도 즉시 폐기
 
+      // P0-12 — 저장 payload와 같은 필드로 한줄 요약을 만든다(같은 source of truth).
+      const summaryCapture = {
+        perFingerJointObservation: jointObservations,
+        dipContourObservation: dipContour,
+        deviationDirection,
+        handSide,
+        comparisonQualityStatus: "unverified",
+        recordingStatus: measurement.ok ? "completed" : "incomplete",
+      };
+      const summary = buildObservationSummary({
+        mode: SUMMARY_MODE.BASELINE,
+        currentCapture: summaryCapture,
+      });
+
       // 화면 표시용 결과. 완료 화면은 DIP를 먼저 읽는다(§8).
       const result = {
+        summary,
         romDeg: avgRom,
         handSide,
         joints: jointObservations,
@@ -571,6 +622,12 @@ export default function MotionScanPage({
   useEffect(() => {
     if (phase === "completed" && saveState === "idle" && scanPayloadRef.current) {
       trackKpiEvent("scan_result_viewed", currentUser?.uid);
+      // P0-12 — 요약 코드와 집계 가능한 메타만 남긴다(수치·좌표 미전송).
+      trackKpiEvent(V9_ANALYTICS_EVENTS.OBSERVATION_SUMMARY_VIEWED, currentUser?.uid, {
+        mode: "baseline",
+        summaryCode: scanResult?.summary?.summaryCode ?? null,
+        comparable: scanResult?.summary?.comparable ?? false,
+      });
       persistScan();
     }
   }, [phase, saveState, persistScan, currentUser]);
@@ -598,7 +655,11 @@ export default function MotionScanPage({
       { key: "pinky",  name: "소지", dipExtensionPoseFlexionDeg: 12, dipExtensionPoseDeviationDeg: 2,  dipDeviationDirection: "radial",  dipMaxFlexionDeg: 55, dipActiveRomDeg: 43, pipExtensionPoseFlexionDeg: 9,  pipExtensionPoseDeviationDeg: 0,  pipDeviationDirection: "neutral", pipMaxFlexionDeg: 84, pipActiveRomDeg: 75, dipObserved: true, pipObserved: true },
     ];
     const simDeviationDirection = summarizeDeviationDirection(simJoints);
-    setScanResult({ romDeg: 122, handSide, fingers: simFingers, joints: simJoints, deviationDirection: simDeviationDirection, measurementOk: true });
+    setScanResult({ romDeg: 122, handSide, fingers: simFingers, joints: simJoints, deviationDirection: simDeviationDirection, measurementOk: true,
+      summary: buildObservationSummary({
+        mode: SUMMARY_MODE.BASELINE,
+        currentCapture: { perFingerJointObservation: simJoints, handSide, comparisonQualityStatus: "unverified", recordingStatus: "completed" },
+      }) });
     triggerFeedback("시뮬레이션 측정 완료!");
 
     if (captureMode) {
@@ -864,6 +925,8 @@ export default function MotionScanPage({
               ) : (
                 // ── V10 기본 뷰 — 점수·등급·자동추천 없이 "관찰된 값"만 보여준다 ──
                 <>
+                  {/* RC1.2.2 P0-12 — 상세 숫자 위에 규칙 기반 한줄 요약을 먼저 보여준다. */}
+                  <ObservationSummaryCard summary={scanResult.summary} />
                   {/* RC1.2.2 P0-8 §8 — 평균 ROM을 메인에서 빼고 DIP 끝마디를 먼저 보여준다. */}
                   <JointObservationResult joints={scanResult.joints} />
                   {/* P0-9 §8 — 외곽 폭 관찰은 QA 허용 계정에만 먼저 노출한다. */}
