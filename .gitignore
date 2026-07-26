@@ -14,3 +14,6 @@ ui-debug.log
 
 dist-webkit-*/
 vite.config.js.timestamp-*
+
+# 제출 문서 작업본(민감·비공개) — GitHub 업로드 금지
+local-private/
