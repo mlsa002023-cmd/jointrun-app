@@ -9,6 +9,8 @@
 // 카메라 프레임에서 실제 값을 뽑는 부분(샘플링)은 별도 side-effecting 헬퍼로 분리했다.
 // ─────────────────────────────────────────────
 
+import { hasJointObservation } from "./captureObservationAdapter";
+
 const FRAME_EDGE_MARGIN = 0.03; // 이 값보다 가장자리에 가까우면 "프레임을 벗어남"으로 판단
 const MIN_HAND_SPAN = 0.18; // 손이 프레임에서 차지하는 비율이 이보다 작으면 "너무 멀다"
 const MAX_HAND_SPAN = 0.92; // 이보다 크면 "너무 가깝다"
@@ -122,6 +124,12 @@ export function evaluateComparability(baselineCapture, currentCapture) {
   if (baselineCapture.handSide !== currentCapture.handSide) reasons.push("hand_side_mismatch");
   if (!isReliableCapture(currentCapture)) reasons.push("current_quality_unreliable");
   if (!isReliableCapture(baselineCapture)) reasons.push("baseline_quality_unreliable");
+  // RC1.2.2 P0-10 — 한쪽만 관절별(DIP/PIP) 관찰을 가진 경우. 구형 기록에는 관절별 값이
+  // 없고 원본(사진·영상·landmark)도 남기지 않으므로 되살릴 수 없다. 0으로 메우거나
+  // 추정하지 않고 "직접 비교하지 않음"으로 둔다.
+  if (hasJointObservation(baselineCapture) !== hasJointObservation(currentCapture)) {
+    reasons.push("algorithm_version_mismatch");
+  }
 
   const unverified = [baselineCapture, currentCapture]
     .some((c) => c?.comparisonQualityStatus === "unverified");

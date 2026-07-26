@@ -4,6 +4,10 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { evaluateComparability } from "../../lib/captureQuality";
+import {
+  toObservationView, pairFingerObservations, hasGenerationMismatch, OBSERVATION_GENERATION,
+} from "../../lib/captureObservationAdapter";
+import ObservationComparisonTable from "./ObservationComparisonTable";
 
 const SYMPTOM_ROWS = [
   { key: "painSelfReport", label: "통증 체감" },
@@ -25,6 +29,8 @@ const NON_COMPARABLE_LABEL = {
   current_quality_unreliable: "이번 촬영 조건이 비교하기에 불안정했어요",
   baseline_quality_unreliable: "기준선 촬영 조건이 비교하기에 불안정했어요",
   missing_capture: "비교할 기록을 찾을 수 없어요",
+  // RC1.2.2 P0-10 — 한쪽만 관절별 관찰을 가진 경우. 구형 기록을 신형 수치로 추정하지 않는다.
+  algorithm_version_mismatch: "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다.",
 };
 
 function fmtDate(date) {
@@ -39,16 +45,18 @@ function fmtRom(v) {
   return v == null ? "—" : `${Math.round(v)}°`;
 }
 
-// 기준선·현재 capture의 손가락별 관찰 각도를 같은 key로 짝지어 행 목록을 만든다.
-function fingerRows(baselineCapture, currentCapture) {
-  const base = baselineCapture?.perFingerObservedRomDeg ?? [];
-  const curr = currentCapture?.perFingerObservedRomDeg ?? [];
-  const keys = [...new Set([...base.map((f) => f.key), ...curr.map((f) => f.key)])];
-  return keys.map((key) => {
-    const b = base.find((f) => f.key === key);
-    const c = curr.find((f) => f.key === key);
-    return { key, name: b?.name ?? c?.name ?? key, baseline: b?.romDeg, current: c?.romDeg };
-  });
+// RC1.2.2 P0-10 — 구형 평균 ROM/손가락 각도는 legacy 기록에서만 보조로 보여준다.
+// 신규 세대에서는 관절별(DIP/PIP) 관찰이 주 비교 대상이다.
+function legacyFingerRows(baselineView, currentView) {
+  const b = baselineView?.fingers ?? [];
+  const c = currentView?.fingers ?? [];
+  const keys = [...new Set([...b.map((f) => f.key), ...c.map((f) => f.key)])];
+  return keys.map((key) => ({
+    key,
+    name: b.find((f) => f.key === key)?.name ?? c.find((f) => f.key === key)?.name ?? key,
+    baseline: b.find((f) => f.key === key)?.legacyRomDeg ?? null,
+    current: c.find((f) => f.key === key)?.legacyRomDeg ?? null,
+  }));
 }
 
 const SYMPTOM_VALUE_LABEL = {
@@ -66,6 +74,16 @@ function formatSymptomValue(key, value) {
 export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed }) {
   const [change, setChange] = useState(null);
   const { comparable, reasons, comparisonQualityUnverified } = evaluateComparability(baselineCapture, currentCapture);
+
+  // RC1.2.2 P0-10 — capture 문서를 세대에 맞게 정규화한다. 신규 필드가 있으면 그것이
+  // source of truth이고, 구형 필드는 legacy 기록에서만 보조로 쓴다(누락은 0이 아니라 —).
+  const baselineView = toObservationView(baselineCapture);
+  const currentView = toObservationView(currentCapture);
+  const pairs = pairFingerObservations(baselineView, currentView);
+  const generationMismatch = hasGenerationMismatch(baselineView, currentView);
+  const bothLegacy =
+    baselineView?.generation === OBSERVATION_GENERATION.LEGACY_ROM &&
+    currentView?.generation === OBSERVATION_GENERATION.LEGACY_ROM;
 
   useEffect(() => { onViewed?.({ comparable }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -122,20 +140,24 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
           <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[baselineCapture?.handSide] ?? "-"}</span>
           <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 700 }}>{HAND_LABEL[currentCapture?.handSide] ?? "-"}</span>
         </div>
-        {/* RC1.2.1 §2 — 관찰 각도(평균 ROM)와 손가락별 각도를 증상과 나란히 보여준다.
-            자동으로 호전·악화를 판정하지 않는다 — 값만 나란히 놓고 판단은 사용자가 한다. */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
-          <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>평균 ROM</span>
-          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(baselineCapture?.averageObservedRomDeg)}</span>
-          <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(currentCapture?.averageObservedRomDeg)}</span>
-        </div>
-        {fingerRows(baselineCapture, currentCapture).map((row) => (
-          <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
-            <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.name} 각도</span>
-            <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.baseline)}</span>
-            <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.current)}</span>
-          </div>
-        ))}
+        {/* RC1.2.2 P0-10 — 구형 평균 ROM/손가락 각도는 양쪽 모두 구형 기록일 때만 보조로 남긴다.
+            신규 세대에서는 아래 관절별(DIP/PIP) 관찰이 주 비교 대상이다. */}
+        {bothLegacy && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>평균 ROM</span>
+              <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(baselineView?.legacyAverageRomDeg)}</span>
+              <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(currentView?.legacyAverageRomDeg)}</span>
+            </div>
+            {legacyFingerRows(baselineView, currentView).map((row) => (
+              <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
+                <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.name} 각도</span>
+                <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.baseline)}</span>
+                <span style={{ fontSize: 13, color: "#0f172a", textAlign: "center", fontWeight: 800 }}>{fmtRom(row.current)}</span>
+              </div>
+            ))}
+          </>
+        )}
         {SYMPTOM_ROWS.map((row) => (
           <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{row.label}</span>
@@ -148,6 +170,22 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
           </div>
         ))}
       </div>
+
+      {/* 관절별 관찰 비교 — 신규 세대의 주 비교 화면 */}
+      {!bothLegacy && (
+        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 16, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#122A5C", marginBottom: 4 }}>손가락별 관절 관찰</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10, lineHeight: 1.6 }}>
+            {generationMismatch
+              ? "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다."
+              : "각 시점에 관찰된 값을 나란히 놓았습니다. 좋아짐·나빠짐을 자동으로 판정하지 않습니다."}
+          </div>
+          <ObservationComparisonTable pairs={pairs} baselineView={baselineView} currentView={currentView} />
+          <div style={{ marginTop: 12, fontSize: 10, color: "#94a3b8", lineHeight: 1.6 }}>
+            외곽 폭은 인접 마디 대비 비율입니다. 이 값은 질환이나 붓기의 원인을 판정하지 않습니다.
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 10 }}>기준선 때보다 지금은 어떤가요?</div>
