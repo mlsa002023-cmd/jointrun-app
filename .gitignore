@@ -13,3 +13,4 @@ ui-debug.log
 .env*
 
 dist-webkit-*/
+vite.config.js.timestamp-*

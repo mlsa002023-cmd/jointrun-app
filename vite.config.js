@@ -8,7 +8,10 @@ function resolveBuildSha() {
   if (process.env.BUILD_SHA) return process.env.BUILD_SHA;
   try {
     const sha = execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
-    const dirty = execSync("git status --porcelain", { encoding: "utf8" }).trim().length > 0;
+    // --untracked-files=no 필수 — vite는 ESM config를 읽을 때 vite.config.js.timestamp-*.mjs를
+    // 잠시 만들어 두는데, 그걸 세면 항상 dirty로 오탐지된다. 배포된 코드와 커밋의 차이는
+    // "추적 중인 파일의 수정"으로 판단한다.
+    const dirty = execSync("git status --porcelain --untracked-files=no", { encoding: "utf8" }).trim().length > 0;
     return dirty ? `${sha}-dirty` : sha;
   } catch {
     return "unknown";
