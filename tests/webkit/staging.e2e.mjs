@@ -12,7 +12,10 @@ try {
   process.exit(1);
 }
 
-const BASE = process.env.STAGING_URL || "https://jointrun-staging.web.app";
+// RC1.2.2 P0-6 — UAT 기본 주소는 firebaseapp.com이다. 앱과 인증 도우미(/__/auth/*)가
+// 같은 출처가 되어 Safari/WebKit의 교차 출처 저장소 제한을 받지 않는다.
+const BASE = process.env.STAGING_URL || "https://jointrun-staging.firebaseapp.com";
+const EXPECTED_SHA = process.env.EXPECTED_SHA || "";
 let failures = 0;
 function check(name, ok, detail = "") {
   console.log(`  ${ok ? "ok" : "FAIL"} — ${name}${ok || !detail ? "" : ` :: ${detail}`}`);
@@ -63,6 +66,14 @@ async function run(engine, name) {
     return res.ok ? await res.json() : null;
   });
   check("같은 출처 /__/firebase/init.json 응답", Boolean(cfg));
+
+  // 배포된 번들이 기대한 커밋인지(미커밋 코드로 배포되지 않았는지) 화면에서 확인한다.
+  const shaText = await page.locator("[data-testid=build-sha]").first().textContent().catch(() => "");
+  check("배포 SHA가 화면에 표시된다", Boolean(shaText && shaText.trim()), String(shaText));
+  check("미커밋(dirty) 빌드가 아니다", !String(shaText).includes("-dirty"), String(shaText));
+  if (EXPECTED_SHA) {
+    check(`배포 SHA가 ${EXPECTED_SHA}`, String(shaText).includes(EXPECTED_SHA), String(shaText));
+  }
   check("projectId가 jointrun-staging", cfg?.projectId === "jointrun-staging", String(cfg?.projectId));
 
   // 같은 출처 인증 핸들러/iframe이 살아있어야 popup·redirect가 완료된다.
@@ -83,6 +94,12 @@ async function run(engine, name) {
     const after = page.url();
     const started = after !== before || /accounts\.google\.com|__\/auth/.test(after);
     check("Google 로그인 클릭 시 인증 흐름이 시작된다(조용히 실패하지 않음)", started, `url=${after.slice(0, 70)}`);
+    check("Google 계정 화면에 도달한다(redirect_uri_mismatch 없음)",
+      /accounts\.google\.com/.test(after) && !/authError|error/.test(after), `url=${after.slice(0, 90)}`);
+    if (name.startsWith("WebKit")) {
+      // 같은 탭 전체 이동 = signInWithRedirect 경로. popup이었다면 원래 URL에 머문다.
+      check("WebKit은 redirect 방식(같은 탭 이동)을 사용한다", after !== before, `url=${after.slice(0, 70)}`);
+    }
   } else {
     check("Google 로그인 버튼 존재", false);
   }
