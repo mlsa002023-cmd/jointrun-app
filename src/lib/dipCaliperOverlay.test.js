@@ -21,15 +21,18 @@ function mockCtx() {
     lineTo: vi.fn((x, y) => { cur?.pts.push([x, y]); }),
     stroke: vi.fn(() => { if (cur?.pts.length >= 2) lines.push(cur.pts); }),
     lineWidth: 1, strokeStyle: "", fillStyle: "", font: "",
+    // P0-11.1 — 렌더러는 정규화 좌표를 이 캔버스 크기로 변환한다.
+    canvas: { width: 1000, height: 1000 },
   };
 }
 
+// 정규화 좌표(0..1). 1000×1000 캔버스에서 예전 픽셀값과 같은 위치가 된다.
 const geo = (over = {}) => ({
-  dipCenter: { x: 100, y: 100 },
-  axisStart: { x: 100, y: 80 },
-  axisEnd: { x: 100, y: 120 },
-  radialEdge: { x: 112, y: 100 },
-  ulnarEdge: { x: 88, y: 100 },
+  dipCenter: { xNorm: 0.100, yNorm: 0.100 },
+  axisStart: { xNorm: 0.100, yNorm: 0.080 },
+  axisEnd: { xNorm: 0.100, yNorm: 0.120 },
+  radialEdge: { xNorm: 0.112, yNorm: 0.100 },
+  ulnarEdge: { xNorm: 0.088, yNorm: 0.100 },
   ...over,
 });
 
@@ -133,11 +136,12 @@ describe("캘리퍼 기하 — 중심축에 수직 (§2)", () => {
     const ax = { x: Math.sin(r), y: -Math.cos(r) };
     const perp = { x: -ax.y, y: ax.x };
     const c = { x: 100, y: 100 };
+    const N = (x, y) => ({ xNorm: x / 1000, yNorm: y / 1000 });
     const rotated = geo({
-      axisStart: { x: c.x - ax.x * 20, y: c.y - ax.y * 20 },
-      axisEnd: { x: c.x + ax.x * 20, y: c.y + ax.y * 20 },
-      radialEdge: { x: c.x + perp.x * 12, y: c.y + perp.y * 12 },
-      ulnarEdge: { x: c.x - perp.x * 12, y: c.y - perp.y * 12 },
+      axisStart: N(c.x - ax.x * 20, c.y - ax.y * 20),
+      axisEnd: N(c.x + ax.x * 20, c.y + ax.y * 20),
+      radialEdge: N(c.x + perp.x * 12, c.y + perp.y * 12),
+      ulnarEdge: N(c.x - perp.x * 12, c.y - perp.y * 12),
     });
     const ctx = mockCtx();
     const model = deriveOverlayModel([measurement({ displayGeometry: rotated })], { index: 3 }, true);

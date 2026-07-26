@@ -154,12 +154,16 @@ function estimateBackground(img, stations, perp, radius) {
  */
 export function measureFingerDipContour(imageData, landmarks, chain, radialSign) {
   const flags = [];
-  // RC1.2.2 P0-11 — 실패해도 오버레이가 "어디를 보고 있는지"는 그려야 하므로,
-  // 가능한 만큼의 표시용 geometry를 함께 돌려준다(저장 payload에는 들어가지 않는다).
-  const fail = (flag, displayGeometry = null) => ({ ok: false, flags: [flag], displayGeometry });
 
   const w = imageData?.width ?? 0;
   const h = imageData?.height ?? 0;
+
+  // RC1.2.2 P0-11.1 — displayGeometry는 분석 캔버스 픽셀이 아니라 0..1 정규화 좌표로 낸다.
+  // 예전에는 축소된 분석 캔버스(최대 480px)의 절대 픽셀을 그대로 반환했고, 오버레이는 그것을
+  // video 원본 크기 캔버스에 그려서 축소 배율만큼 어긋난 위치(화면 좌상단)에 표시됐다.
+  const norm = (pt) => (pt ? { xNorm: pt.x / w, yNorm: pt.y / h } : null);
+  const fail = (flag, geometry = null) => ({ ok: false, flags: [flag], displayGeometry: geometry });
+
   if (!w || !h) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
 
   const pip = px(landmarks, chain.pip, w, h);
@@ -167,74 +171,85 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
   const tip = px(landmarks, chain.tip, w, h);
   if (!pip || !dip || !tip) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
 
-  // 손가락 축 = PIP→TIP. 축에 수직인 방향으로 주사 = 축을 수직 정렬한 것과 동등(§2).
-  const ax = tip.x - pip.x;
-  const ay = tip.y - pip.y;
-  const axisLen = Math.hypot(ax, ay);
-  if (!(axisLen > 4)) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
-  const axis = { x: ax / axisLen, y: ay / axisLen };
-  // 수직 벡터. radialSign으로 +방향이 항상 엄지쪽이 되게 맞춘다(좌우 손 정규화).
-  const perp = { x: -axis.y * radialSign, y: axis.x * radialSign };
+  // ── DIP 국소 진행축(§4) ──
+  // PIP→TIP 전체 직선을 쓰면 끝마디가 굽은 손에서 DIP 단면 방향이 틀어진다.
+  // 근위/원위 두 분절 방향의 합으로 DIP 자리의 접선을 구한다.
+  const unit = (ax, ay) => {
+    const l = Math.hypot(ax, ay);
+    return l > 1e-9 ? { x: ax / l, y: ay / l } : null;
+  };
+  const proximal = unit(dip.x - pip.x, dip.y - pip.y);
+  const distal = unit(tip.x - dip.x, tip.y - dip.y);
+  let tangent = proximal && distal ? unit(proximal.x + distal.x, proximal.y + distal.y) : null;
+  // 두 분절이 정반대라 합이 0이 되는 퇴화 상황에서만 PIP→TIP로 되돌아간다.
+  if (!tangent) tangent = unit(tip.x - pip.x, tip.y - pip.y);
+  if (!tangent) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
 
+  const axisLen = Math.hypot(tip.x - pip.x, tip.y - pip.y);
+  if (!(axisLen > 4)) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
+
+  // 폭 방향 = 접선의 수직. radialSign으로 +방향이 항상 엄지쪽이 되게 맞춘다(좌우 손 정규화).
+  const perp = { x: -tangent.y * radialSign, y: tangent.x * radialSign };
   const radius = Math.max(6, axisLen * SCAN_HALF_SPAN_RATIO);
 
-  // 표시용 중심축(짧게) — DIP를 중심으로 PIP↔TIP 방향 일부만 그린다.
+  // 표시용 중심축 — 중심은 반드시 DIP landmark 그 자체다(§3).
   const axisHalf = axisLen * 0.18;
-  const axisGeometry = {
-    dipCenter: { x: dip.x, y: dip.y },
-    axisStart: { x: dip.x - axis.x * axisHalf, y: dip.y - axis.y * axisHalf },
-    axisEnd: { x: dip.x + axis.x * axisHalf, y: dip.y + axis.y * axisHalf },
+  const baseGeometry = {
+    dipCenter: norm(dip),
+    axisStart: norm({ x: dip.x - tangent.x * axisHalf, y: dip.y - tangent.y * axisHalf }),
+    axisEnd: norm({ x: dip.x + tangent.x * axisHalf, y: dip.y + tangent.y * axisHalf }),
     radialEdge: null,
     ulnarEdge: null,
   };
 
-  // DIP 주변 주사 위치와, 비교 기준이 되는 인접 지골(중위지골) 몸통 주사 위치.
+  // 중앙 주사선(t=0)과, 품질 확인용 보조 주사선·몸통 주사선.
   const along = (from, to, t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
-  const dipStations = [-0.12, -0.06, 0, 0.06, 0.12].map((t) => ({
-    x: dip.x + axis.x * t * axisLen,
-    y: dip.y + axis.y * t * axisLen,
-  }));
+  const stationAt = (t) => ({ x: dip.x + tangent.x * t * axisLen, y: dip.y + tangent.y * t * axisLen });
+  const sideStations = [-0.12, -0.06, 0.06, 0.12].map(stationAt);
   const bodyStations = [0.35, 0.45, 0.55, 0.65].map((t) => along(pip, dip, t));
 
-  // ROI가 화면 밖으로 크게 벗어나면 관찰하지 않는다(§6 ROI 잘림).
-  const outOfBounds = [...dipStations, ...bodyStations].some(
+  const outOfBounds = [dip, ...sideStations, ...bodyStations].some(
     (c) => c.x < 0 || c.y < 0 || c.x >= w || c.y >= h
   );
-  if (outOfBounds) return fail(CONTOUR_FLAG.ROI_OUT_OF_BOUNDS, axisGeometry);
+  if (outOfBounds) return fail(CONTOUR_FLAG.ROI_OUT_OF_BOUNDS, baseGeometry);
 
-  const bg = estimateBackground(imageData, [...dipStations, ...bodyStations], perp, radius);
-  if (!bg) return fail(CONTOUR_FLAG.LOW_CONTRAST, axisGeometry);
+  const bg = estimateBackground(imageData, [dip, ...sideStations, ...bodyStations], perp, radius);
+  if (!bg) return fail(CONTOUR_FLAG.LOW_CONTRAST, baseGeometry);
 
-  // 축 위 픽셀(=손가락)과 배경의 대비가 충분한지 확인(§6 배경 대비 부족).
-  const axisSamples = dipStations
+  const axisSamples = [dip, ...sideStations]
     .map((c) => sampleRgb(imageData, c.x, c.y))
     .filter(Boolean)
     .map((rgb) => rgbDistance(rgb, bg));
   const contrast = median(axisSamples);
-  if (contrast === null || contrast < MIN_CONTRAST) return fail(CONTOUR_FLAG.LOW_CONTRAST, axisGeometry);
+  if (contrast === null || contrast < MIN_CONTRAST) return fail(CONTOUR_FLAG.LOW_CONTRAST, baseGeometry);
 
-  const runFor = (stations) => stations.map((c) => scanLine(imageData, c, perp, radius, bg));
-  const dipRuns = runFor(dipStations);
-  const bodyRuns = runFor(bodyStations);
+  // ── 실제 숫자에 쓰는 단면은 DIP 중심 주사선 하나다(§5) ──
+  // 화면에 그리는 가로선과 계산에 쓴 단면이 달라지지 않게, 중심선이 실패하면 그 프레임은
+  // 유효한 관찰로 인정하지 않는다.
+  const centerRun = scanLine(imageData, dip, perp, radius, bg);
+  if (!centerRun) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  if (centerRun.touchedEdge) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
 
-  // 윤곽이 끊겨 중심 구간을 못 찾으면 실패(§6 윤곽 단절).
-  const dipValid = dipRuns.filter(Boolean);
-  const bodyValid = bodyRuns.filter(Boolean);
-  if (dipValid.length < 3 || bodyValid.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, axisGeometry);
+  // 보조 주사선은 노이즈·윤곽 일관성 확인에만 쓴다(숫자를 대체하지 않는다).
+  const sideRuns = sideStations.map((c) => scanLine(imageData, c, perp, radius, bg)).filter(Boolean);
+  if (sideRuns.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
 
-  // 반경 끝까지 손가락이면 옆 손가락과 붙은 것으로 본다(§6 손가락 겹침).
-  if (dipValid.filter((r) => r.touchedEdge).length > dipValid.length / 2) {
-    return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
-  }
+  const bodyValid = bodyStations.map((c) => scanLine(imageData, c, perp, radius, bg)).filter(Boolean);
+  if (bodyValid.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
 
-  const dipRadial = median(dipValid.map((r) => r.radial));
-  const dipUlnar = median(dipValid.map((r) => r.ulnar));
+  const dipRadial = centerRun.radial;
+  const dipUlnar = centerRun.ulnar;
   const dipWidth = dipRadial + dipUlnar;
   const bodyWidth = median(bodyValid.map((r) => r.radial + r.ulnar));
 
-  if (!(bodyWidth > 0) || !(dipWidth > 0)) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, axisGeometry);
-  if (dipWidth >= radius * 2 * OVERLAP_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
-  if (dipWidth / bodyWidth > MAX_PLAUSIBLE_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, axisGeometry);
+  if (!(bodyWidth > 0) || !(dipWidth > 0)) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  if (dipWidth >= radius * 2 * OVERLAP_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
+  if (dipWidth / bodyWidth > MAX_PLAUSIBLE_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
+  // 중심선이 보조선들과 크게 어긋나면 윤곽이 일관되지 않은 것으로 본다.
+  const sideMedian = median(sideRuns.map((r) => r.radial + r.ulnar));
+  if (sideMedian > 0 && Math.abs(dipWidth - sideMedian) / sideMedian > 0.6) {
+    return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  }
 
   return {
     ok: true,
@@ -245,14 +260,25 @@ export function measureFingerDipContour(imageData, landmarks, chain, radialSign)
     ulnarHalfWidthRatio: dipUlnar / bodyWidth,
     // 좌우 비대칭: + = 엄지쪽이 넓음, - = 새끼쪽이 넓음.
     contourAsymmetryRatio: (dipRadial - dipUlnar) / dipWidth,
-    // RC1.2.2 P0-11 — 화면에 캘리퍼를 그리기 위한 임시 좌표. 프레임 렌더 직후 폐기하며
-    // buildDipContourPayload가 절대 담지 않는다(윤곽 path나 mask도 만들지 않는다).
+    // 화면에 그리는 캘리퍼 좌표(정규화). 프레임 렌더 직후 폐기하며 저장 payload에 담기지 않는다.
     displayGeometry: {
-      ...axisGeometry,
-      radialEdge: { x: dip.x + perp.x * dipRadial, y: dip.y + perp.y * dipRadial },
-      ulnarEdge: { x: dip.x - perp.x * dipUlnar, y: dip.y - perp.y * dipUlnar },
+      ...baseGeometry,
+      radialEdge: norm({ x: dip.x + perp.x * dipRadial, y: dip.y + perp.y * dipRadial }),
+      ulnarEdge: norm({ x: dip.x - perp.x * dipUlnar, y: dip.y - perp.y * dipUlnar }),
     },
   };
+}
+
+/**
+ * 저장·집계용으로 넘기기 전에 표시용 좌표를 떼어낸다(§6).
+ * dipContourFramesRef 같은 누적 버퍼에 좌표가 쌓이지 않게 하는 유일한 관문이다.
+ */
+export function stripTransientGeometry(frameResults) {
+  if (!Array.isArray(frameResults)) return frameResults;
+  return frameResults.map((f) => {
+    const { displayGeometry, ...rest } = f; // eslint-disable-line no-unused-vars
+    return rest;
+  });
 }
 
 /**

@@ -12,6 +12,18 @@
 
 import { DIP_ROI_CHAINS, CONTOUR_FLAG, MIN_VALID_FRAMES } from "./dipContour";
 
+/**
+ * 정규화 좌표(0..1) → 캔버스 픽셀. skeleton과 캘리퍼가 반드시 이 함수 하나만 쓴다.
+ * 분석 해상도·기기 해상도와 무관하게 같은 위치를 가리키는 유일한 변환이다.
+ */
+export function normalizedPointToCanvas(point, canvas) {
+  if (!point || !canvas) return null;
+  const x = point.xNorm ?? point.x;
+  const y = point.yNorm ?? point.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x: x * canvas.width, y: y * canvas.height };
+}
+
 /** 손가락별 오버레이 상태(§3). */
 export const CALIPER_STATE = {
   SEARCHING: "searching",     // A. landmark 탐색 중
@@ -131,12 +143,22 @@ function colorFor(state) {
  * @param {object} model    deriveOverlayModel 결과
  * @param {object} opts     { qaDetail: boolean, scale: number }
  */
-export function drawCaliperOverlay(ctx, model, { qaDetail = false, scale = 1 } = {}) {
-  if (!ctx || !model?.fingers) return;
+export function drawCaliperOverlay(ctx, model, { qaDetail = false, scale = 1, canvas = null } = {}) {
+  const target = canvas ?? ctx?.canvas;
+  if (!ctx || !target || !model?.fingers) return;
 
   model.fingers.forEach((f) => {
-    const g = f.geometry;
-    if (!g?.dipCenter) return;
+    const raw = f.geometry;
+    if (!raw?.dipCenter) return;
+    // 정규화 좌표를 이 캔버스 픽셀로 옮긴다. 임의 offset·기기별 보정은 쓰지 않는다.
+    const g = {
+      dipCenter: normalizedPointToCanvas(raw.dipCenter, target),
+      axisStart: normalizedPointToCanvas(raw.axisStart, target),
+      axisEnd: normalizedPointToCanvas(raw.axisEnd, target),
+      radialEdge: normalizedPointToCanvas(raw.radialEdge, target),
+      ulnarEdge: normalizedPointToCanvas(raw.ulnarEdge, target),
+    };
+    if (!g.dipCenter) return;
 
     const isFocus = f.key === model.focusKey;
     const color = colorFor(f.state);

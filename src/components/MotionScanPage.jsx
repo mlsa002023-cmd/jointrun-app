@@ -23,7 +23,7 @@ import {
 import { assessPoseMeasurement, assessMeasurement } from "../lib/measurementQuality";
 import {
   measureFrameDipContours, aggregateDipContourFrames, buildDipContourPayload,
-  CONTOUR_FRAME_TARGET,
+  stripTransientGeometry, CONTOUR_FRAME_TARGET,
 } from "../lib/dipContour";
 import JointObservationResult from "./v9/JointObservationResult";
 import DipContourResult from "./v9/DipContourResult";
@@ -156,6 +156,7 @@ export default function MotionScanPage({
   const sampleBufferRef = useRef([]); // { fingers, worldLandmarks, ts } 최근 프레임 버퍼 — 포즈 검증/집계에 사용
   const SAMPLE_WINDOW_MS = 1500; // 마지막 1.5초 구간만 대표값 계산에 사용 (그 이전 프레임은 자동 폐기)
   const rawFramesRef = useRef({}); // { spread: [...], ok: [...], fist: [...] } — 포즈별 원본 landmark 프레임 (raw 계층 저장용)
+  const CONTOUR_TICK_MS = 100; // 외곽 측정은 약 10fps로 제한한다(§6 성능)
   const RAW_FRAMES_PER_POSE = 20; // Firestore 문서 용량 보호를 위한 상한 (포즈당 마지막 20프레임만 보존)
   // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. spread 포즈 동안 프레임마다 즉시 계산하고 파생 비율만 남긴다.
   // 픽셀·마스크·윤곽 좌표는 어디에도 보관하지 않는다(§7).
@@ -165,6 +166,7 @@ export default function MotionScanPage({
   // 상태 문구가 실제로 바뀔 때만 setState 한다(§7 매 프레임 setState 금지).
   const dipValidCountsRef = useRef({});
   const caliperModelRef = useRef(null);
+  const lastContourTickRef = useRef(0);
   const caliperStatusRef = useRef("");
   const [caliperStatus, setCaliperStatus] = useState("");
 
@@ -364,25 +366,37 @@ export default function MotionScanPage({
 
         // RC1.2.2 P0-9 — spread 포즈 동안에만 DIP 외곽 폭을 관찰한다(별도 촬영 단계 없음, §1).
         // 프레임 픽셀은 이 자리에서 비율로 환산하고 즉시 버린다 — 이미지·윤곽 좌표는 남기지 않는다.
-        if (
-          POSE_GUIDE[poseIndexRef.current].id === "spread" &&
-          dipContourFramesRef.current.length < CONTOUR_FRAME_TARGET
-        ) {
-          const measured = measureDipContourFromVideo(video, result.landmarks[0], dipContourCanvasRef);
-          if (measured) {
-            dipContourFramesRef.current.push(measured);
-            measured.forEach((m) => {
-              if (m.ok) dipValidCountsRef.current[m.key] = (dipValidCountsRef.current[m.key] ?? 0) + 1;
-            });
+        // RC1.2.2 P0-11.1 §6 — 표시(overlay)와 수집(저장용 수치)을 분리한다.
+        // 예전에는 목표 프레임 수에 도달하면 측정 자체를 멈춰서, 손을 움직여도 캘리퍼가
+        // 과거 위치에 그대로 남았다. 이제 spread 동안에는 항상 최신 프레임을 따라간다.
+        if (POSE_GUIDE[poseIndexRef.current].id === "spread") {
+          // 오버레이 측정은 8~12fps로 throttle 한다(skeleton은 rAF 속도 유지).
+          const dueForContour = now - lastContourTickRef.current >= CONTOUR_TICK_MS;
+          if (dueForContour) {
+            lastContourTickRef.current = now;
+            const measured = measureDipContourFromVideo(video, result.landmarks[0], dipContourCanvasRef);
+
+            // 저장용 수치는 목표치까지만 쌓고, 좌표는 떼어내고 넣는다(§6 누적 금지).
+            if (measured && dipContourFramesRef.current.length < CONTOUR_FRAME_TARGET) {
+              dipContourFramesRef.current.push(stripTransientGeometry(measured));
+              measured.forEach((m) => {
+                if (m.ok) dipValidCountsRef.current[m.key] = (dipValidCountsRef.current[m.key] ?? 0) + 1;
+              });
+            }
+
+            // 표시용 모델은 목표 도달 여부와 무관하게 매번 갱신한다.
+            // 이번 프레임에서 측정이 없으면 stale을 남기지 않고 지운다(§7).
+            caliperModelRef.current = measured
+              ? deriveOverlayModel(measured, dipValidCountsRef.current, true)
+              : null;
+            const nextStatus = caliperModelRef.current?.statusText ?? "";
+            if (nextStatus !== caliperStatusRef.current) {
+              caliperStatusRef.current = nextStatus;
+              setCaliperStatus(nextStatus);
+            }
           }
-          // 오버레이 모델은 매 프레임 만들되, 화면 문구는 바뀔 때만 반영한다.
-          caliperModelRef.current = deriveOverlayModel(measured, dipValidCountsRef.current, true);
-          if (caliperModelRef.current.statusText !== caliperStatusRef.current) {
-            caliperStatusRef.current = caliperModelRef.current.statusText;
-            setCaliperStatus(caliperModelRef.current.statusText);
-          }
-        } else if (POSE_GUIDE[poseIndexRef.current].id !== "spread") {
-          // spread가 아니면 오버레이를 숨긴다(§1).
+        } else {
+          // spread가 아니면 오버레이를 즉시 지운다(§1·§7).
           caliperModelRef.current = null;
           if (caliperStatusRef.current) { caliperStatusRef.current = ""; setCaliperStatus(""); }
         }
@@ -412,12 +426,16 @@ export default function MotionScanPage({
           drawCaliperOverlay(canvas.getContext("2d"), caliperModelRef.current, {
             qaDetail: qaAllowed && debugVisibleRef.current,
             scale: Math.max(1, (video.videoWidth || 640) / 640),
+            canvas, // 정규화 좌표를 이 캔버스 크기로 변환한다
           });
         }
       } else {
         setHandDetected(false);
         setLiveMetrics(null);
         setDebugInfo(null);
+        // §7 — 손이 사라지면 떠 있는 캘리퍼를 남기지 않는다.
+        caliperModelRef.current = null;
+        if (caliperStatusRef.current) { caliperStatusRef.current = ""; setCaliperStatus(""); }
         clearCanvas(canvas);
       }
     }
