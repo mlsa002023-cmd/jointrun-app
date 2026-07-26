@@ -156,48 +156,64 @@ export function AuthProvider({ children }) {
       setAuthLoading(false);
     }, AUTH_INIT_TIMEOUT_MS);
 
-    // 세션이 새로고침·재방문 후에도 유지되도록 명시한다(기본값에 의존하지 않는다).
-    setPersistence(authInstance, browserLocalPersistence).catch((e) => {
-      console.warn("[Auth] persistence 설정 실패:", e?.code || e?.name);
-    });
+    // RC1.2.2 P0-6 — 순서가 중요하다.
+    //   1) persistence를 먼저 확정한다. redirect로 돌아온 자격증명은 이 저장소에서
+    //      복원되므로, 설정이 끝나기 전에 getRedirectResult를 부르면 결과를 놓칠 수 있다.
+    //   2) 그 다음 getRedirectResult로 redirect 로그인 결과를 회수한다.
+    //   3) 마지막으로 onAuthStateChanged를 구독한다.
+    let unsubscribe = () => {};
+    let disposed = false;
 
-    const unsubscribe = onAuthStateChanged(
-      authInstance,
-      (user) => {
-        if (!initialResolved) {
-          initialResolved = true;
-          clearTimeout(timeoutId);
-        }
-        setCurrentUser(user);
-        setAuthLoading(false);
-        if (user) setAuthError(null); // 로그인에 성공하면 이전 오류 안내를 지운다
-      },
-      (error) => {
-        if (!initialResolved) {
-          initialResolved = true;
-          clearTimeout(timeoutId);
-        }
-        console.error("[Auth] onAuthStateChanged 오류:", error?.code || error?.name);
-        setAuthError("connection_error");
-        setAuthLoading(false);
+    (async () => {
+      try {
+        await setPersistence(authInstance, browserLocalPersistence);
+      } catch (e) {
+        // 저장소를 쓸 수 없는 환경(사파리 비공개 모드 등)에서도 로그인 자체는 계속 시도한다.
+        console.warn("[Auth] persistence 설정 실패:", e?.code || e?.name);
       }
-    );
+      if (disposed) return;
 
-    // redirect 방식으로 로그인한 경우, 앱이 다시 뜰 때 그 결과를 여기서 회수한다.
-    getRedirectResult(authInstance)
-      .then((result) => {
-        if (result?.user) {
+      try {
+        const result = await getRedirectResult(authInstance);
+        if (!disposed && result?.user) {
+          initialResolved = true;
+          clearTimeout(timeoutId);
           setCurrentUser(result.user);
           setAuthError(null);
-          upsertUserDoc(result.user);
+          setAuthLoading(false);
+          await upsertUserDoc(result.user);
         }
-      })
-      .catch((e) => {
+      } catch (e) {
         console.error("[Auth] redirect 결과 처리 실패:", e?.code || e?.name);
-        setAuthError("redirect_result_failed");
-      });
+        if (!disposed) setAuthError("redirect_result_failed");
+      }
+      if (disposed) return;
+
+      unsubscribe = onAuthStateChanged(
+        authInstance,
+        (user) => {
+          if (!initialResolved) {
+            initialResolved = true;
+            clearTimeout(timeoutId);
+          }
+          setCurrentUser(user);
+          setAuthLoading(false);
+          if (user) setAuthError(null); // 로그인에 성공하면 이전 오류 안내를 지운다
+        },
+        (error) => {
+          if (!initialResolved) {
+            initialResolved = true;
+            clearTimeout(timeoutId);
+          }
+          console.error("[Auth] onAuthStateChanged 오류:", error?.code || error?.name);
+          setAuthError("connection_error");
+          setAuthLoading(false);
+        }
+      );
+    })();
 
     return () => {
+      disposed = true;
       clearTimeout(timeoutId);
       unsubscribe();
     };

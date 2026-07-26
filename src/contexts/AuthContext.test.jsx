@@ -13,6 +13,7 @@ let redirectResultError = null;
 const popupMock = vi.fn();
 const redirectMock = vi.fn();
 const setPersistenceMock = vi.fn(() => Promise.resolve());
+const getRedirectSpy = vi.fn();
 
 vi.mock("firebase/auth", () => ({
   onAuthStateChanged: (_auth, next, error) => {
@@ -20,8 +21,10 @@ vi.mock("firebase/auth", () => ({
     authListeners.error = error;
     return () => { authListeners.next = null; };
   },
-  getRedirectResult: () =>
-    redirectResultError ? Promise.reject(redirectResultError) : Promise.resolve(redirectResultValue),
+  getRedirectResult: () => {
+    getRedirectSpy();
+    return redirectResultError ? Promise.reject(redirectResultError) : Promise.resolve(redirectResultValue);
+  },
   setPersistence: setPersistenceMock,
   browserLocalPersistence: "local",
   signInWithPopup: (...a) => popupMock(...a),
@@ -62,18 +65,28 @@ function renderProvider() {
   return render(<AuthProvider><Probe /></AuthProvider>);
 }
 
+// 구독은 persistence 확정 + getRedirectResult 이후에 걸리므로(P0-6 순서), 동기적으로
+// 바로 존재한다고 가정할 수 없다. 구독이 붙을 때까지 기다린 뒤 이벤트를 흘려보낸다.
+async function waitForSubscription() {
+  await waitFor(() => expect(typeof authListeners.next).toBe("function"));
+}
+
 /** onAuthStateChanged 최초 응답(로그인 안 된 상태)을 흘려보낸다. */
 async function emitInitialSignedOut() {
+  await waitForSubscription();
   await act(async () => { authListeners.next(null); });
 }
 
 beforeEach(() => {
   ctx = null;
+  authListeners.next = null;
   redirectResultValue = null;
   redirectResultError = null;
   popupMock.mockReset();
   redirectMock.mockReset();
   setPersistenceMock.mockClear();
+  setPersistenceMock.mockImplementation(() => Promise.resolve());
+  getRedirectSpy.mockReset();
   window.innerWidth = 1280; // 기본은 데스크톱(popup 우선 경로)
   Object.defineProperty(navigator, "userAgent", {
     value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
@@ -106,6 +119,7 @@ describe("onAuthStateChanged — 로그인 성공 반영", () => {
 
   it("로그아웃 이벤트도 반영된다", async () => {
     renderProvider();
+    await waitForSubscription();
     await act(async () => { authListeners.next({ uid: "u1" }); });
     expect(screen.getByTestId("uid").textContent).toBe("u1");
     await act(async () => { authListeners.next(null); });
@@ -149,6 +163,7 @@ describe("Google 로그인 — popup / redirect", () => {
     popupMock.mockReturnValue(new Promise(() => {})); // 영원히 pending
     redirectMock.mockResolvedValue(undefined);
     renderProvider();
+    await waitForSubscription();
     await act(async () => { authListeners.next(null); });
 
     let pending;
@@ -202,6 +217,44 @@ describe("getRedirectResult 처리", () => {
     redirectResultError = Object.assign(new Error("bad"), { code: "auth/internal-error" });
     renderProvider();
     await waitFor(() => expect(ctx.authError).toBe("redirect_result_failed"));
+  });
+
+  // RC1.2.2 P0-6 — redirect로 돌아온 자격증명은 persistence 저장소에서 복원되므로,
+  // persistence가 확정되기 전에 결과를 조회하면 로그인 결과를 놓칠 수 있다.
+  it("persistence를 확정한 뒤에 redirect 결과를 조회한다", async () => {
+    const order = [];
+    setPersistenceMock.mockImplementation(() => { order.push("persistence"); return Promise.resolve(); });
+    redirectResultValue = { user: { uid: "ordered-user" } };
+    getRedirectSpy.mockImplementation(() => { order.push("getRedirectResult"); });
+
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("uid").textContent).toBe("ordered-user"));
+    expect(order).toEqual(["persistence", "getRedirectResult"]);
+  });
+
+  it("redirect 로그인 사용자도 Firestore users 문서를 갱신한다", async () => {
+    redirectResultValue = { user: { uid: "redirect-user", email: "a@b.com" } };
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("uid").textContent).toBe("redirect-user"));
+    const { setDoc } = await import("firebase/firestore");
+    await waitFor(() => expect(setDoc).toHaveBeenCalled());
+  });
+
+  it("redirect 결과가 있으면 로딩 상태에 갇히지 않는다", async () => {
+    redirectResultValue = { user: { uid: "redirect-user" } };
+    renderProvider();
+    await waitFor(() => expect(ctx.authLoading).toBe(false));
+  });
+});
+
+describe("새로고침 후 세션 유지", () => {
+  it("이미 로그인된 상태로 앱이 다시 뜨면 currentUser가 복원된다", async () => {
+    // 새로고침 시 SDK는 저장된 세션으로 onAuthStateChanged를 즉시 호출한다.
+    renderProvider();
+    await waitForSubscription();
+    await act(async () => { authListeners.next({ uid: "persisted-user" }); });
+    expect(screen.getByTestId("uid").textContent).toBe("persisted-user");
+    expect(ctx.authLoading).toBe(false);
   });
 });
 

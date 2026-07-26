@@ -1,8 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
+
+// RC1.2.2 P0-6 — 배포된 번들이 정확히 어느 커밋인지 확인할 수 있어야 한다.
+// (미커밋 작업 트리로 배포하면 dirty가 붙어 바로 드러난다.)
+function resolveBuildSha() {
+  if (process.env.BUILD_SHA) return process.env.BUILD_SHA;
+  try {
+    const sha = execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+    const dirty = execSync("git status --porcelain", { encoding: "utf8" }).trim().length > 0;
+    return dirty ? `${sha}-dirty` : sha;
+  } catch {
+    return "unknown";
+  }
+}
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __BUILD_SHA__: JSON.stringify(resolveBuildSha()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   server: {
     port: 5173,
     host: true,

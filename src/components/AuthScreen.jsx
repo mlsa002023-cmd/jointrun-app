@@ -120,6 +120,12 @@ export default function AuthScreen() {
           </button>
         )}
       </div>
+
+      {/* RC1.2.2 P0-6 — 지금 열려 있는 화면이 어느 커밋으로 배포된 것인지 확인용.
+          미커밋 코드로 배포하면 "-dirty"가 붙어 바로 드러난다. */}
+      <p data-testid="build-sha" style={{ marginTop: 18, textAlign: "center", fontSize: 10, color: "#cbd5e1" }}>
+        build {__BUILD_SHA__}
+      </p>
     </div>
   );
 }
