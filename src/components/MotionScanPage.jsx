@@ -878,7 +878,13 @@ export default function MotionScanPage({
 
         {/* ── completed ── */}
         {phase === "completed" && scanResult && (
-          <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/97 p-3">
+          // P0-12.1 §6 — 이 패널은 absolute inset-0이라 하단 고정 CTA가 콘텐츠 위를 덮는다.
+          // 버튼 높이(56) + 상하 패딩(24) + safe-area 만큼 아래 여백을 둬야 마지막 카드까지 스크롤된다.
+          <div
+            className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/97 p-3"
+            style={{ paddingBottom: "calc(104px + env(safe-area-inset-bottom))", WebkitOverflowScrolling: "touch" }}
+            data-testid="scan-result-scroll"
+          >
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
               {/* 상단: 측정 기록 완료 + '다시 측정하기'(보조 액션만). '홈으로'는 하단 Primary CTA로 이동. */}
               <div className="flex items-center justify-between mb-3">

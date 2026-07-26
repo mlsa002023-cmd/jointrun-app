@@ -232,15 +232,36 @@ describe("recheck — 반복 오차 처리 (§8)", () => {
     assertSafe(s);
   });
 
-  it("반복 범위가 없으면 방향성 대신 '차이로 기록됐어요'를 쓴다", () => {
+  // P0-12.1 §1 — headline에는 정확한 각도 숫자를 넣지 않는다(상세표 반올림값과 어긋나지 않게).
+  it("반복 범위가 없으면 방향성·숫자 없이 '다르게 기록됐어요'로 적는다", () => {
     const cur = capture([
       finger("index", "검지", { dipExtensionPoseFlexionDeg: 12 }),
       ...FOUR.slice(1),
     ]);
     const s = buildObservationSummary({ mode: SUMMARY_MODE.RECHECK, baselineCapture: base, currentCapture: cur });
-    expect(s.headline).toMatch(/차이로 기록됐어요/);
+    expect(s.headline).toMatch(/다르게 기록됐어요/);
     expect(s.headline).not.toMatch(/증가|감소/);
     assertSafe(s);
+  });
+
+  it("headline에 각도 숫자가 들어가지 않는다", () => {
+    const cur = capture([
+      finger("index", "검지", { dipExtensionPoseFlexionDeg: 12 }),
+      finger("middle", "중지", { dipExtensionPoseFlexionDeg: 19 }),
+      ...FOUR.slice(2),
+    ]);
+    const s = buildObservationSummary({ mode: SUMMARY_MODE.RECHECK, baselineCapture: base, currentCapture: cur });
+    expect(s.headline).not.toMatch(/\d+°|\d+%p?/);
+  });
+
+  it("같은 항목이 여러 손가락에서 걸리면 이름을 묶어 한 문장으로 적는다", () => {
+    const cur = capture([
+      finger("index", "검지", { dipExtensionPoseFlexionDeg: 22 }),
+      finger("middle", "중지", { dipExtensionPoseFlexionDeg: 20 }),
+      ...FOUR.slice(2),
+    ]);
+    const s = buildObservationSummary({ mode: SUMMARY_MODE.RECHECK, baselineCapture: base, currentCapture: cur });
+    expect(s.headline).toMatch(/검지와 중지 끝마디 말림이/);
   });
 
   it("최대 2개 항목만 요약한다", () => {
@@ -269,6 +290,18 @@ describe("recheck — 외곽 비교", () => {
     const c = capture(FOUR, { dipContourObservation: contour({ middle: { dipWidthRatio: 1.4, contourAsymmetryRatio: 0.5 } }) });
     const s = buildObservationSummary({ mode: SUMMARY_MODE.RECHECK, baselineCapture: b, currentCapture: c });
     expect(s.headline).not.toMatch(/외곽 폭|윤곽 차이/);
+  });
+});
+
+describe("문구 정합성 (P0-12.1 §2)", () => {
+  it("unverified 상태에서 '같은 자세'·'동일 조건' 확정 표현을 쓰지 않는다", () => {
+    const s = buildObservationSummary({
+      mode: SUMMARY_MODE.RECHECK,
+      baselineCapture: capture(FOUR),
+      currentCapture: capture([finger("index", "검지", { dipExtensionPoseFlexionDeg: 30 }), ...FOUR.slice(1)]),
+    });
+    expect(s.secondaryText).toBe("같은 손에서 각 시점에 관찰된 값을 나란히 놓았습니다.");
+    expect(s.secondaryText).not.toMatch(/같은 자세|동일 조건/);
   });
 });
 

@@ -17,7 +17,7 @@ const observation = {
 describe("DipContourResult", () => {
   it("요구된 제목 문구를 쓴다", () => {
     render(<DipContourResult observation={observation} />);
-    expect(screen.getByText("끝마디 외곽 폭 관찰값")).toBeInTheDocument();
+    expect(screen.getByText(/인접 마디 대비 외곽 폭 관찰값/)).toBeInTheDocument();
     // 라벨은 두 줄로 나뉘어 렌더링되므로 요소 단위가 아니라 전체 텍스트로 확인한다.
     expect(screen.getByTestId("dip-contour-result").textContent.replace(/\s+/g, "")).toContain("좌우윤곽비대칭");
   });
@@ -33,7 +33,8 @@ describe("DipContourResult", () => {
     render(<DipContourResult observation={observation} />);
     const row = screen.getByTestId("dip-contour-row-index");
     expect(within(row).getByText("124%")).toBeInTheDocument();
-    expect(within(row).getByText("68% / 56%")).toBeInTheDocument();
+    // P0-12.1 §4 — 반폭은 기본 화면에서 숨긴다.
+    expect(within(row).queryByText("68% / 56%")).toBeNull();
     expect(within(row).getByText("9프레임")).toBeInTheDocument();
   });
 

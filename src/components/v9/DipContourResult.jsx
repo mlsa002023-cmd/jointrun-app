@@ -3,20 +3,11 @@
 // 카피 원칙: 관찰값만 적는다. 붓기·염증·질환 원인을 판정하지 않고, "측정 완료" 같은
 // 단정도 하지 않는다. 관찰에 실패하면 값을 0으로 보여주지 않고 재측정을 안내한다(§6).
 
-/** 비율을 백분율 문자열로. 값이 없으면 표시하지 않는다. */
-function ratio(v) {
-  return Number.isFinite(v) ? `${Math.round(v * 100)}%` : "—";
-}
+// RC1.2.2 P0-12.1 — 표기는 공통 formatter만 쓴다. 비교 화면과 반올림·부호 규칙이
+// 달라지면 같은 기록이 다른 값처럼 읽힌다.
+import { fmtPercent, fmtAsymmetry, CONTOUR_WIDTH_LABEL } from "../../lib/observationFormat";
 
-/** 좌우 비대칭은 크기와 방향으로 적는다(부호를 그대로 노출하지 않는다). */
-function asymmetryText(v) {
-  if (!Number.isFinite(v)) return "—";
-  const pct = Math.round(Math.abs(v) * 100);
-  if (pct < 5) return `${pct}% 치우침 없음`;
-  return `${pct}% ${v > 0 ? "엄지쪽" : "새끼쪽"}`;
-}
-
-export default function DipContourResult({ observation, flags = [], onRetake }) {
+export default function DipContourResult({ observation, flags = [], onRetake, showHalfWidths = false }) {
   const fingers = observation?.fingers ?? [];
 
   if (!fingers.length) {
@@ -46,7 +37,7 @@ export default function DipContourResult({ observation, flags = [], onRetake }) 
 
   return (
     <div className="mb-3" data-testid="dip-contour-result">
-      <p className="text-[11px] font-bold text-slate-500 mb-2">끝마디 외곽 폭 관찰값</p>
+      <p className="text-[11px] font-bold text-slate-500 mb-2">{CONTOUR_WIDTH_LABEL} 관찰값</p>
 
       <div className="flex flex-col gap-2 mb-2">
         {fingers.map((f) => (
@@ -59,21 +50,24 @@ export default function DipContourResult({ observation, flags = [], onRetake }) 
               <span className="text-[11px] font-black text-[#122A5C]">{f.name}</span>
               <span className="text-[9px] text-slate-400">{f.validFrames}프레임</span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${showHalfWidths ? "grid-cols-3" : "grid-cols-2"}`}>
               <div>
-                <div className="text-[9px] text-slate-500 leading-tight">끝마디<br />외곽 폭</div>
-                <div className="text-sm font-black text-[#122A5C] font-mono">{ratio(f.dipWidthRatio)}</div>
+                <div className="text-[9px] text-slate-500 leading-tight">인접 마디 대비<br />외곽 폭</div>
+                <div className="text-sm font-black text-[#122A5C] font-mono">{fmtPercent(f.dipWidthRatio)}</div>
               </div>
               <div>
                 <div className="text-[9px] text-slate-500 leading-tight">좌우 윤곽<br />비대칭</div>
-                <div className="text-[12px] font-black text-[#122A5C]">{asymmetryText(f.contourAsymmetryRatio)}</div>
+                <div className="text-[12px] font-black text-[#122A5C]">{fmtAsymmetry(f.contourAsymmetryRatio)}</div>
               </div>
-              <div>
-                <div className="text-[9px] text-slate-500 leading-tight">엄지쪽 /<br />새끼쪽 반폭</div>
-                <div className="text-[12px] font-black text-[#122A5C] font-mono">
-                  {ratio(f.radialHalfWidthRatio)} / {ratio(f.ulnarHalfWidthRatio)}
+              {/* §4 — 반폭은 기본 화면에서 숨기고 상세 보기/QA에서만 보여준다. */}
+              {showHalfWidths && (
+                <div data-testid={`dip-contour-halfwidth-${f.key}`}>
+                  <div className="text-[9px] text-slate-500 leading-tight">엄지쪽 /<br />새끼쪽 반폭</div>
+                  <div className="text-[12px] font-black text-[#122A5C] font-mono">
+                    {fmtPercent(f.radialHalfWidthRatio)} / {fmtPercent(f.ulnarHalfWidthRatio)}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         ))}

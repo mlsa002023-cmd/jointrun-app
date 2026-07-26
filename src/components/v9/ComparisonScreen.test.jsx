@@ -91,7 +91,7 @@ describe("신규 ↔ 신규 비교", () => {
     const row = screen.getByTestId("compare-finger-index");
     expect(within(row).getByText("95%")).toBeInTheDocument();
     expect(within(row).getByText("108%")).toBeInTheDocument();
-    expect(within(row).getByText("10%")).toBeInTheDocument();
+    expect(within(row).getByText("10% 엄지쪽")).toBeInTheDocument(); // 부호 대신 방향(P0-12.1 §3)
   });
 
   it("평균 ROM·구형 손가락 각도를 주 비교로 쓰지 않는다", () => {

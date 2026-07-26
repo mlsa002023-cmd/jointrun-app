@@ -9,28 +9,9 @@
 // 자동으로 좋아짐·나빠짐을 판정하지 않는다 — 두 값을 나란히 놓기만 한다.
 import { OBSERVATION_GENERATION } from "../../lib/captureObservationAdapter";
 
-const DIRECTION_LABEL = { radial: "엄지쪽", ulnar: "새끼쪽", neutral: "치우침 없음" };
+import { fmtDeg, fmtPercent, fmtDeviation, fmtAsymmetry, MISSING } from "../../lib/observationFormat";
 
 const LEGACY_PLACEHOLDER = "이전 방식 기록";
-const MISSING = "—";
-
-/** 각도 표기. 0은 값이므로 "0°", 없으면 "—". */
-export function fmtDeg(v) {
-  return Number.isFinite(v) ? `${Math.round(v)}°` : MISSING;
-}
-
-/** 비율 표기(외곽 폭 등). 0도 값으로 취급한다. */
-export function fmtRatio(v) {
-  return Number.isFinite(v) ? `${Math.round(v * 100)}%` : MISSING;
-}
-
-/** 부호 있는 편위각 → "크기 + 방향". 부호를 그대로 노출하지 않는다. */
-export function fmtDeviation(deg, direction) {
-  if (!Number.isFinite(deg)) return MISSING;
-  const label = DIRECTION_LABEL[direction] ?? "";
-  if (direction === "neutral") return `${Math.abs(Math.round(deg))}° 치우침 없음`;
-  return `${Math.abs(Math.round(deg))}°${label ? ` ${label}` : ""}`;
-}
 
 /**
  * 한쪽 capture의 값을 화면 문자열로 만든다.
@@ -76,12 +57,12 @@ function FingerBlock({ pair, baselineView, currentView }) {
       render: (f) => fmtDeg(f.dipActiveRomDeg),
     },
     {
-      label: "끝마디 외곽 폭",
-      render: (f) => fmtRatio(f.contour?.dipWidthRatio),
+      label: "인접 마디 대비 외곽 폭",
+      render: (f) => fmtPercent(f.contour?.dipWidthRatio),
     },
     {
       label: "좌우 윤곽 비대칭",
-      render: (f) => fmtRatio(f.contour?.contourAsymmetryRatio),
+      render: (f) => fmtAsymmetry(f.contour?.contourAsymmetryRatio),
     },
     {
       label: "중간마디 편 상태 굽힘",
@@ -112,7 +93,11 @@ function FingerBlock({ pair, baselineView, currentView }) {
   );
 }
 
-export default function ObservationComparisonTable({ pairs, baselineView, currentView }) {
+/**
+ * RC1.2.2 P0-12.1 §5 — 기본은 주요 관찰 손가락만 보여주고, 나머지는 접어 둔다.
+ * @param {string[]} focusKeys 요약이 지목한 손가락(최대 2개). 없으면 앞의 2개를 쓴다.
+ */
+export default function ObservationComparisonTable({ pairs, baselineView, currentView, focusKeys = [] }) {
   if (!pairs?.length) {
     return (
       <div style={{ fontSize: 12, color: "#64748b", padding: "10px 0" }}>
@@ -121,16 +106,40 @@ export default function ObservationComparisonTable({ pairs, baselineView, curren
     );
   }
 
+  const focus = focusKeys.length
+    ? pairs.filter((p) => focusKeys.includes(p.key)).slice(0, 2)
+    : pairs.slice(0, 2);
+  const focusSet = new Set(focus.map((p) => p.key));
+  const rest = pairs.filter((p) => !focusSet.has(p.key));
+
+  const Header = () => (
+    <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr", gap: 8, fontSize: 11, fontWeight: 800, color: "#94a3b8" }}>
+      <span>관찰 항목</span>
+      <span style={{ textAlign: "center" }}>기준선</span>
+      <span style={{ textAlign: "center" }}>지금</span>
+    </div>
+  );
+
   return (
     <div data-testid="observation-comparison">
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr", gap: 8, fontSize: 11, fontWeight: 800, color: "#94a3b8" }}>
-        <span>관찰 항목</span>
-        <span style={{ textAlign: "center" }}>기준선</span>
-        <span style={{ textAlign: "center" }}>지금</span>
-      </div>
-      {pairs.map((pair) => (
+      <Header />
+      {focus.map((pair) => (
         <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} />
       ))}
+
+      {rest.length > 0 && (
+        <details style={{ marginTop: 12 }} data-testid="comparison-details-toggle">
+          <summary style={{ fontSize: 12, fontWeight: 800, color: "#122A5C", cursor: "pointer", minHeight: 44, display: "flex", alignItems: "center" }}>
+            전체 손가락 상세 펼치기
+          </summary>
+          <div style={{ marginTop: 4 }}>
+            <Header />
+            {rest.map((pair) => (
+              <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -193,7 +193,7 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
               ? "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다."
               : "각 시점에 관찰된 값을 나란히 놓았습니다. 좋아짐·나빠짐을 자동으로 판정하지 않습니다."}
           </div>
-          <ObservationComparisonTable pairs={pairs} baselineView={baselineView} currentView={currentView} />
+          <ObservationComparisonTable pairs={pairs} baselineView={baselineView} currentView={currentView} focusKeys={summary?.focusFingerKeys ?? []} />
           <div style={{ marginTop: 12, fontSize: 10, color: "#94a3b8", lineHeight: 1.6 }}>
             외곽 폭은 인접 마디 대비 비율입니다. 이 값은 질환이나 붓기의 원인을 판정하지 않습니다.
           </div>

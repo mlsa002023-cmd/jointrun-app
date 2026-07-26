@@ -258,9 +258,11 @@ function recheckDiffItems(baselineView, currentView, band) {
   return items;
 }
 
-function diffText(item) {
-  if (item.unit === "°") return `${Math.abs(Math.round(item.diff))}° 차이로 기록됐어요`;
-  return `${Math.abs(Math.round(item.diff * 100))}%p 차이로 기록됐어요`;
+// RC1.2.2 P0-12.1 §1 — headline에는 정확한 각도 숫자를 기본적으로 넣지 않는다.
+// 숫자를 쓰면 상세표의 반올림값과 어긋나 "요약과 표가 다르다"는 인상을 준다.
+// 차이의 크기는 상세표에서 직접 읽게 하고, 요약은 어디를 볼지만 알려준다.
+function diffText() {
+  return "기준선과 다르게 기록됐어요";
 }
 
 function buildRecheckSummary({ baselineCapture, currentCapture, comparisonQuality, personalRepeatBand }) {
@@ -327,7 +329,7 @@ function buildRecheckSummary({ baselineCapture, currentCapture, comparisonQualit
     chosen.push(it);
   });
 
-  const secondaryText = "같은 손과 같은 자세로 기록된 값만 나란히 놓았습니다.";
+  const secondaryText = "같은 손에서 각 시점에 관찰된 값을 나란히 놓았습니다.";
 
   // 반복 범위 판단이 가능하고 전부 범위 안이면 "비슷한 범위"로 적는다.
   const bandKnown = items.some((i) => i.within !== null);
@@ -345,10 +347,18 @@ function buildRecheckSummary({ baselineCapture, currentCapture, comparisonQualit
   const phrase = (it) =>
     it.within === false
       ? `${it.name} ${it.label}은 반복 측정 범위를 넘어 다르게 기록됐어요`
-      : `${it.name} ${it.label}은 ${diffText(it)}`;
+      : `${it.name} ${it.label}은 ${diffText()}`;
 
-  const headline =
-    chosen.length === 1
+  // 같은 항목이 여러 손가락에서 걸리면 손가락 이름을 묶어 한 문장으로 적는다
+  // ("검지와 약지 끝마디 말림이 기준선과 다르게 기록됐어요").
+  const sameLabel = chosen.length === 2 && chosen[0].label === chosen[1].label;
+  const headline = sameLabel
+    ? `${chosen[0].name}와 ${chosen[1].name} ${chosen[0].label}이 ${
+        chosen.some((c) => c.within === false)
+          ? "반복 측정 범위를 넘어 다르게 기록됐어요"
+          : "기준선과 다르게 기록됐어요"
+      }.`
+    : chosen.length === 1
       ? `${phrase(chosen[0])}.`
       : `${phrase(chosen[0])}, ${phrase(chosen[1])}.`;
 
