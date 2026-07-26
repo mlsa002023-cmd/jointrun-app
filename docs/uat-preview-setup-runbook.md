@@ -1,4 +1,12 @@
-# 대표 검수용 UAT Preview 환경 설정 런북
+# 대표 검수용 UAT Preview 환경 설정 런북 (보관용 — 현재 UAT 경로 아님)
+
+> **현재 공식 UAT 주소는 https://jointrun-staging.firebaseapp.com 이다.**
+> 절차는 [uat-staging-runbook.md](uat-staging-runbook.md)를 따른다.
+>
+> 이 문서는 RC1.2.2 초기에 Vercel Preview로 UAT를 준비했던 이력을 남긴 것이다.
+> Deployment Protection(SSO) 때문에 접근 절차가 번거롭고 배포마다 주소가 바뀌는 문제,
+> 그리고 앱 출처와 Firebase 인증 도우미 출처가 달라 Safari에서 Google 로그인 결과가
+> 앱으로 돌아오지 않는 문제가 있어 Firebase Hosting Staging으로 옮겼다.
 
 이 문서는 대표 검수(UAT)를 위한 Vercel Preview + Staging Firebase 환경을 만들 때
 **Vercel/Firebase 대시보드에서 직접 해야 하는 작업**을 정리한 것이다.
