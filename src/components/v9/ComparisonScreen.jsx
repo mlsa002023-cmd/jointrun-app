@@ -8,6 +8,8 @@ import {
   toObservationView, pairFingerObservations, hasGenerationMismatch, OBSERVATION_GENERATION,
 } from "../../lib/captureObservationAdapter";
 import ObservationComparisonTable from "./ObservationComparisonTable";
+import ObservationSummaryCard from "./ObservationSummaryCard";
+import { buildObservationSummary, SUMMARY_MODE } from "../../lib/observationSummary";
 
 const SYMPTOM_ROWS = [
   { key: "painSelfReport", label: "통증 체감" },
@@ -71,7 +73,7 @@ function formatSymptomValue(key, value) {
   return map ? (map[value] ?? value) : value;
 }
 
-export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed }) {
+export default function ComparisonScreen({ baselineCapture, currentCapture, onSubmit, onCancel, onViewed, personalRepeatBand = null }) {
   const [change, setChange] = useState(null);
   const { comparable, reasons, comparisonQualityUnverified } = evaluateComparability(baselineCapture, currentCapture);
 
@@ -84,6 +86,15 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
   const bothLegacy =
     baselineView?.generation === OBSERVATION_GENERATION.LEGACY_ROM &&
     currentView?.generation === OBSERVATION_GENERATION.LEGACY_ROM;
+
+  // RC1.2.2 P0-12 — 상세 표 위에 규칙 기반 한줄 요약을 먼저 보여준다.
+  const summary = buildObservationSummary({
+    mode: SUMMARY_MODE.RECHECK,
+    baselineCapture,
+    currentCapture,
+    comparisonQuality: { comparable, reasons },
+    personalRepeatBand: personalRepeatBand ?? null,
+  });
 
   useEffect(() => { onViewed?.({ comparable }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -102,6 +113,8 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
           질환의 악화나 치료 효과를 판정하지 않습니다.
         </div>
       </div>
+
+      <ObservationSummaryCard summary={summary} />
 
       {!comparable && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 14, padding: 14, marginBottom: 16 }}>
