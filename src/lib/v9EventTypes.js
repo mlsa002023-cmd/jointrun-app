@@ -10,7 +10,9 @@
 
 export const V9_SCHEMA_VERSION = "v1.0";
 export const CAPTURE_PROTOCOL_VERSION = "v1.0";
-export const ALGORITHM_VERSION = "v1.0";
+// RC1.2.2 P0-8 — PIP 평균 ROM에서 DIP/PIP 관절별 관찰로 확장. 이전 버전(v1.0)으로 기록된
+// capture는 관절별 필드가 없으므로, 비교 화면에서 세대를 구분할 때 이 값을 본다.
+export const ALGORITHM_VERSION = "v1.1";
 
 export const EVENT_STATUS = {
   DRAFT: "draft",

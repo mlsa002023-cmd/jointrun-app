@@ -17,6 +17,11 @@ import { Camera, RefreshCw, Check } from "lucide-react";
 import CameraView from "./CameraView";
 import { HAND_CONNECTIONS, initHandTracker, detectHands, disposeHandTracker } from "../lib/handTracker";
 import { analyzeAllFingers, summarizeFingers, buildRecommendation, aggregateFingerSamples, validatePose, computeFistMetric, computeOkSignMetric, detectGesture } from "../lib/motionAnalyzer";
+import {
+  analyzeFingerJoints, aggregateJointSamples, buildFingerJointObservations, summarizeDeviationDirection,
+} from "../lib/jointObservation";
+import { assessPoseMeasurement, assessMeasurement } from "../lib/measurementQuality";
+import JointObservationResult from "./v9/JointObservationResult";
 import { computeMobilityScore, computeStabilityScore } from "../lib/fingerHealthScore";
 import { FEATURE_FLAGS, shouldShowQaTools } from "../config/featureFlags";
 import { trackKpiEvent } from "../lib/analytics";
@@ -402,10 +407,32 @@ export default function MotionScanPage({
       });
       const avgRom = Math.round(perFinger.reduce((sum, f) => sum + f.rom, 0) / perFinger.length);
 
-      // 화면 표시용 결과(각도만). 완료 화면(V10 뷰)은 각도·ROM만 읽는다.
+      // ── RC1.2.2 P0-8 — DIP 중심 관절별 관찰 ──
+      // 최대 신전 포즈(spread)와 최대 굴곡 포즈(fist)의 원본 프레임으로 관절별 각도를 계산한다.
+      // 프레임은 여기서 계산에만 쓰고 저장하지 않는다(§9).
+      const framesOf = (poseId) =>
+        (rawFrames?.[poseId] ?? []).map((f) => f.worldLandmarks).filter(Boolean);
+      const extensionFrames = framesOf("spread");
+      const flexionFrames = framesOf("fist");
+      const extensionAgg = aggregateJointSamples(extensionFrames.map(analyzeFingerJoints));
+      const flexionAgg = aggregateJointSamples(flexionFrames.map(analyzeFingerJoints));
+      const jointObservations = buildFingerJointObservations(extensionAgg, flexionAgg);
+      const deviationDirection = jointObservations.length
+        ? summarizeDeviationDirection(jointObservations)
+        : null;
+      // §7 — 성공 여부는 각도 크기가 아니라 landmark·안정성·유한성·좌표 변화로만 판정한다.
+      const measurement = assessMeasurement({
+        extension: assessPoseMeasurement(extensionFrames, extensionAgg),
+        flexion: assessPoseMeasurement(flexionFrames, flexionAgg),
+      });
+
+      // 화면 표시용 결과. 완료 화면은 DIP를 먼저 읽는다(§8).
       const result = {
         romDeg: avgRom,
         handSide,
+        joints: jointObservations,
+        deviationDirection,
+        measurementOk: measurement.ok,
         fingers: perFinger.map((f) => ({ key: f.key, name: f.name, flexion: f.rom, score: f.score })),
       };
       setScanResult(result);
@@ -417,10 +444,14 @@ export default function MotionScanPage({
         triggerFeedback(`측정 완료 · 관찰 ROM ${avgRom}°`);
         scanPayloadRef.current = {
           handSide,
+          // P0-8 — 관절별 관찰이 주 기록. 파생 각도와 품질값만 담는다(원본 좌표 없음).
+          perFingerJointObservation: jointObservations,
+          deviationDirection,
+          // 손가락 전체 활동 가동범위(3순위) — 기존 비교 화면 호환을 위해 함께 남긴다.
           perFingerObservedRomDeg: perFinger.map((f) => ({ key: f.key, name: f.name, romDeg: f.rom })),
           averageObservedRomDeg: avgRom,
           qualityStatus: "pass", // 3개 동작 모두 확정됨(기록 완료). 별도 비교 품질 판정은 아님.
-          qualityFlags: [],
+          qualityFlags: measurement.flags,
         };
       } else {
         // ── 레거시 경로(absoluteScoreUiEnabled 뒤): 기존 점수 파이프라인 유지 ──
@@ -496,13 +527,23 @@ export default function MotionScanPage({
       { key: "ring", name: "약지", flexion: 110, score: 72 },
       { key: "pinky", name: "소지", flexion: 105, score: 68 },
     ];
-    setScanResult({ romDeg: 122, handSide, fingers: simFingers });
+    // P0-8 — 시뮬레이션도 실제 촬영과 같은 관절별 관찰 형태를 만든다(잔여 굴곡·편위 포함).
+    const simJoints = [
+      { key: "index",  name: "검지", dipExtensionPoseFlexionDeg: 16, dipExtensionPoseDeviationDeg: -8, dipDeviationDirection: "ulnar",   dipMaxFlexionDeg: 62, dipActiveRomDeg: 46, pipExtensionPoseFlexionDeg: 10, pipExtensionPoseDeviationDeg: 3,  pipDeviationDirection: "radial",  pipMaxFlexionDeg: 92, pipActiveRomDeg: 82, dipObserved: true, pipObserved: true },
+      { key: "middle", name: "중지", dipExtensionPoseFlexionDeg: 8,  dipExtensionPoseDeviationDeg: -3, dipDeviationDirection: "ulnar",   dipMaxFlexionDeg: 68, dipActiveRomDeg: 60, pipExtensionPoseFlexionDeg: 5,  pipExtensionPoseDeviationDeg: 1,  pipDeviationDirection: "neutral", pipMaxFlexionDeg: 95, pipActiveRomDeg: 90, dipObserved: true, pipObserved: true },
+      { key: "ring",   name: "약지", dipExtensionPoseFlexionDeg: 24, dipExtensionPoseDeviationDeg: -14, dipDeviationDirection: "ulnar",  dipMaxFlexionDeg: 58, dipActiveRomDeg: 34, pipExtensionPoseFlexionDeg: 18, pipExtensionPoseDeviationDeg: -6, pipDeviationDirection: "ulnar",   pipMaxFlexionDeg: 88, pipActiveRomDeg: 70, dipObserved: true, pipObserved: true },
+      { key: "pinky",  name: "소지", dipExtensionPoseFlexionDeg: 12, dipExtensionPoseDeviationDeg: 2,  dipDeviationDirection: "radial",  dipMaxFlexionDeg: 55, dipActiveRomDeg: 43, pipExtensionPoseFlexionDeg: 9,  pipExtensionPoseDeviationDeg: 0,  pipDeviationDirection: "neutral", pipMaxFlexionDeg: 84, pipActiveRomDeg: 75, dipObserved: true, pipObserved: true },
+    ];
+    const simDeviationDirection = summarizeDeviationDirection(simJoints);
+    setScanResult({ romDeg: 122, handSide, fingers: simFingers, joints: simJoints, deviationDirection: simDeviationDirection, measurementOk: true });
     triggerFeedback("시뮬레이션 측정 완료!");
 
     if (captureMode) {
       // captureMode: 각도 관찰 기록만. 점수·프로필·rawFrames 없음.
       scanPayloadRef.current = {
         handSide,
+        perFingerJointObservation: simJoints,
+        deviationDirection: simDeviationDirection,
         perFingerObservedRomDeg: simFingers.map((f) => ({ key: f.key, name: f.name, romDeg: f.flexion })),
         averageObservedRomDeg: 122,
         qualityStatus: "pass",
@@ -760,20 +801,9 @@ export default function MotionScanPage({
               ) : (
                 // ── V10 기본 뷰 — 점수·등급·자동추천 없이 "관찰된 값"만 보여준다 ──
                 <>
-                  <p className="text-[11px] font-bold text-slate-500 mb-2">관찰된 손가락 각도</p>
-                  <div className="grid grid-cols-4 gap-2 mb-3">
-                    {scanResult.fingers.map((f) => (
-                      <div key={f.key} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
-                        <div className="text-[9px] text-slate-500 font-bold">{f.name}</div>
-                        <div className="text-sm font-black text-[#122A5C] font-mono">{Math.round(f.flexion)}°</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <div className="text-[9px] text-slate-500">관찰된 ROM</div>
-                      <div className="text-sm font-black text-[#122A5C] font-mono">{scanResult.romDeg}°</div>
-                    </div>
+                  {/* RC1.2.2 P0-8 §8 — 평균 ROM을 메인에서 빼고 DIP 끝마디를 먼저 보여준다. */}
+                  <JointObservationResult joints={scanResult.joints} />
+                  <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                       <div className="text-[9px] text-slate-500">사용 손</div>
                       <div className="text-sm font-black text-[#16213D]">{scanResult.handSide === "left" ? "왼손" : scanResult.handSide === "right" ? "오른손" : "—"}</div>

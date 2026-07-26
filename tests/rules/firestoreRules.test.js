@@ -219,6 +219,52 @@ describe("하위 컬렉션(captures/rechecks/comparisons) — 동일 원칙 적�
     await assertFails(addDoc(col, { ...validAngleCapture, handSide: "both" }));
   });
 
+  // ── RC1.2.2 P0-8 — DIP/PIP 관절별 관찰 기록 ──
+  const jointObservation = [{
+    key: "index", name: "검지",
+    dipExtensionPoseFlexionDeg: 18.4, dipExtensionPoseDeviationDeg: -7.2,
+    dipDeviationDirection: "ulnar", dipMaxFlexionDeg: 62.1, dipActiveRomDeg: 43.7,
+    pipExtensionPoseFlexionDeg: 12.0, pipExtensionPoseDeviationDeg: 2.1,
+    pipDeviationDirection: "radial", pipMaxFlexionDeg: 88.3, pipActiveRomDeg: 76.3,
+    dipObserved: true, pipObserved: true,
+  }];
+
+  it("P0-8 captures: 관절별 관찰 기록(perFingerJointObservation)을 저장할 수 있다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertSucceeds(addDoc(col, {
+      ...validAngleCapture,
+      perFingerJointObservation: jointObservation,
+      deviationDirection: "ulnar",
+    }));
+  });
+
+  it("P0-8 captures: deviationDirection이 허용 값이 아니면 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, { ...validAngleCapture, deviationDirection: "sideways" }));
+  });
+
+  it("P0-8 captures: perFingerJointObservation이 배열이 아니면 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, { ...validAngleCapture, perFingerJointObservation: { index: 1 } }));
+  });
+
+  it("P0-8 captures: 관절별 기록과 함께여도 landmark 계열 금지 필드는 여전히 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, {
+      ...validAngleCapture,
+      perFingerJointObservation: jointObservation,
+      landmarks: [{ x: 1, y: 2, z: 3 }],
+    }));
+  });
+
   it("RC1.2 captures: rawFrames/landmarks/scores/recommendation/landmarksRef 등 금지 필드는 쓰기 거부", async () => {
     const db = testEnv.authenticatedContext(uid).firestore();
     await seedEvent(db);

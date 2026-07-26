@@ -143,6 +143,7 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
  */
 export async function saveObservationalAngleCapture(uid, eventId, {
   handSide, perFingerObservedRomDeg, averageObservedRomDeg,
+  perFingerJointObservation, deviationDirection,
   captureType = CAPTURE_TYPE.BASELINE, qualityFlags,
 }) {
   if (!uid || !eventId) return null;
@@ -153,6 +154,11 @@ export async function saveObservationalAngleCapture(uid, eventId, {
     eventId,
     type: captureType, // baseline | recheck (기존 리더 호환 유지)
     handSide: handSide ?? null,
+    // RC1.2.2 P0-8 — 관절별(DIP/PIP) 관찰이 주 기록이다. 파생 각도와 품질값만 담는다
+    // (원본 사진·영상·landmark는 저장하지 않는다 — §9).
+    perFingerJointObservation: perFingerJointObservation ?? [],
+    deviationDirection: deviationDirection ?? null,
+    // 이전 세대 리더(비교 화면 등) 호환을 위해 손가락 전체 활동 가동범위도 함께 남긴다.
     perFingerObservedRomDeg: perFingerObservedRomDeg ?? [],
     averageObservedRomDeg: averageObservedRomDeg ?? null,
     recordingStatus: RECORDING_STATUS.COMPLETED,

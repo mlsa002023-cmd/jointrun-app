@@ -126,7 +126,8 @@ describe("MotionScanPage 완료 화면 — P0 UX 보정", () => {
 
     // 오류 상태: 재시도 버튼 + 결과(관찰값) 유지
     await screen.findByRole("button", { name: "측정 결과 다시 저장" });
-    expect(screen.getByText("관찰된 손가락 각도")).toBeInTheDocument(); // 결과 화면 유지
+    // P0-8 — 결과 화면은 DIP 끝마디 관찰을 먼저 보여준다(평균 ROM 메인 표시 제거).
+    expect(screen.getByText(/끝마디\(DIP\) 관찰/)).toBeInTheDocument(); // 결과 화면 유지
     expect(screen.queryByRole("button", { name: "다음 단계로 이동" })).toBeNull();
     expect(onGoToNextAction).not.toHaveBeenCalled();
     expect(trackKpiEvent).toHaveBeenCalledWith("scan_result_save_failed", "u1");
@@ -152,7 +153,7 @@ describe("MotionScanPage 완료 화면 — P0 UX 보정", () => {
     expect(screen.queryByText(/Finger Score/i)).toBeNull();
     expect(screen.queryByText(/관찰:/)).toBeNull(); // buildRecommendation 자동추천 문구
     // 대신 관찰값 + 비진단 문구가 보인다
-    expect(screen.getByText("관찰된 손가락 각도")).toBeInTheDocument();
+    expect(screen.getByText(/끝마디\(DIP\) 관찰/)).toBeInTheDocument();
     expect(screen.getByText(/질환 진단이나 악화 여부를 의미하지 않습니다/)).toBeInTheDocument();
   });
 
@@ -186,7 +187,7 @@ describe("MotionScanPage captureMode(RC1.2 각도 관찰) — production 기본"
     // DEBUG 토글은 촬영(scanning) 화면에만 있고 완료 화면에는 없다.
     expect(screen.queryByText("DEBUG")).toBeNull();
     // 관찰값 + 사용 손 + 품질 문구
-    expect(screen.getByText("관찰된 손가락 각도")).toBeInTheDocument();
+    expect(screen.getByText(/끝마디\(DIP\) 관찰/)).toBeInTheDocument();
     expect(screen.getByText("사용 손")).toBeInTheDocument();
     expect(screen.getByText("오른손")).toBeInTheDocument();
     // 실제 비교 품질 판정이 없으므로 "비교 가능" 고정표기 없이 "3개 동작 기록 완료"

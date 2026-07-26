@@ -49,6 +49,10 @@ service cloud.firestore {
         && (!('handSide' in data) || data.handSide == null || data.handSide in ['left', 'right'])
         && (!('qualityFlags' in data) || data.qualityFlags is list)
         && (!('perFingerObservedRomDeg' in data) || data.perFingerObservedRomDeg is list)
+        // RC1.2.2 P0-8 — 관절별(DIP/PIP) 관찰 기록. 파생 각도 목록만 허용한다.
+        && (!('perFingerJointObservation' in data) || data.perFingerJointObservation is list)
+        && (!('deviationDirection' in data) || data.deviationDirection == null
+            || data.deviationDirection in ['radial', 'ulnar', 'neutral'])
         && hasNoForbiddenCaptureFields(data);
     }
 
