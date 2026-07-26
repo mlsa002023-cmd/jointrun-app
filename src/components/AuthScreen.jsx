@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Mail, Lock, User as UserIcon, Loader2 } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, AUTH_ERROR_MESSAGES } from "../contexts/AuthContext";
 
 export default function AuthScreen() {
   const { signup, login, loginWithGoogle, resetPassword, authError, setAuthError } = useAuth();
@@ -93,7 +93,7 @@ export default function AuthScreen() {
 
         {authError && (
           <div style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "6px 10px", fontWeight: 600 }}>
-            {authError}
+            {AUTH_ERROR_MESSAGES[authError] || AUTH_ERROR_MESSAGES.signin_failed}
           </div>
         )}
         {infoMsg && (

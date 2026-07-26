@@ -3,6 +3,13 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import AuthScreen from "./components/AuthScreen";
 import JOINTRUNUnified from "./components/JOINTRUNShell";
 
+// 연결 단계에서만 발생하는 코드들 — 이 경우에만 전체 화면 오류를 띄운다.
+const CONNECTION_ERROR_CODES = new Set([
+  "connection_timeout",
+  "connection_error",
+  "firebase_init_failed",
+]);
+
 // RC1.2.2 P0-2 — onAuthStateChanged가 12초 안에 응답하지 않거나 오류를 반환하면
 // 로그인 화면 대신 이 화면을 보여준다("무한 authLoading 금지").
 function AuthConnectionError({ code, onRetry }) {
@@ -37,7 +44,11 @@ function AuthGate() {
     );
   }
 
-  if (authError && !currentUser) {
+  // RC1.2.2 P0-5 — 전체 화면 오류는 "앱이 서버에 붙지 못한" 연결 단계 실패에만 쓴다.
+  // 로그인 시도 중 생긴 오류(팝업 취소·비밀번호 오류 등)까지 여기서 가로채면 로그인
+  // 화면 자체가 사라져 사용자가 다시 시도할 방법이 없어진다 — 그건 AuthScreen 안에서
+  // 문구로 안내한다.
+  if (CONNECTION_ERROR_CODES.has(authError) && !currentUser) {
     return <AuthConnectionError code={authError} onRetry={retryAuthInit} />;
   }
 

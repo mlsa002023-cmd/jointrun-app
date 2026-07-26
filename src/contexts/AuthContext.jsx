@@ -5,6 +5,10 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -19,8 +23,68 @@ const AuthContext = createContext(null);
 
 // RC1.2.2 P0-3 — 최상위에서 SDK 객체를 만들지 않는다(모듈 evaluation 실패 방지).
 function makeGoogleProvider() {
-  return new GoogleAuthProvider();
+  const provider = new GoogleAuthProvider();
+  // 계정이 여러 개인 기기에서 이전 선택이 자동 적용되지 않고 항상 계정 선택 화면이 뜨게 한다.
+  provider.setCustomParameters({ prompt: "select_account" });
+  return provider;
 }
+
+// RC1.2.2 P0-5 — popup은 완료 신호가 오지 않아도 promise가 영원히 pending으로 남을 수 있다
+// (Safari/WebKit ITP가 authDomain iframe의 스토리지 접근을 막으면 실제로 이 상태가 된다).
+// 그 경우 사용자는 "팝업은 닫혔는데 앱은 로그인 화면 그대로"를 보게 되므로, 일정 시간이
+// 지나면 popup을 포기하고 redirect 방식으로 전환한다.
+const POPUP_RESULT_TIMEOUT_MS = 20000;
+
+/** WebKit(iOS Safari 포함)·모바일 여부 — 이 조합은 popup 핸드셰이크가 자주 실패한다. */
+function prefersRedirectFlow() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isWebKit = /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg/.test(ua);
+  const isSmallScreen = typeof window !== "undefined" && window.innerWidth < 768;
+  return isIOS || isWebKit || isSmallScreen;
+}
+
+/** Firebase 오류를 사용자에게 보여도 안전한 코드로 정규화한다(원문 message는 쓰지 않는다). */
+export function normalizeAuthErrorCode(error) {
+  const code = error?.code || "";
+  if (code === "auth/popup-blocked") return "popup_blocked";
+  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return "popup_closed";
+  if (code === "auth/unauthorized-domain") return "unauthorized_domain";
+  if (code === "auth/account-exists-with-different-credential") return "account_exists_with_different_credential";
+  if (code === "auth/network-request-failed") return "network_request_failed";
+  if (code === "popup_result_timeout") return "popup_result_timeout";
+  if (code === "redirect_result_failed") return "redirect_result_failed";
+  // 이메일/비밀번호 경로
+  if (code === "auth/invalid-email") return "invalid_email";
+  if (code === "auth/weak-password") return "weak_password";
+  if (code === "auth/email-already-in-use") return "email_already_in_use";
+  if (code === "auth/wrong-password" || code === "auth/user-not-found" || code === "auth/invalid-credential") {
+    return "invalid_credentials";
+  }
+  if (code === "auth/too-many-requests") return "too_many_requests";
+  return "signin_failed";
+}
+
+/** 진단 코드 → 사용자 화면 문구. 원인을 숨기지 않되 기술 용어와 원문은 노출하지 않는다. */
+export const AUTH_ERROR_MESSAGES = {
+  popup_blocked: "브라우저가 로그인 창을 차단했습니다. 차단을 해제한 뒤 다시 시도해 주세요.",
+  popup_closed: "로그인 창이 닫혔습니다. 다시 시도해 주세요.",
+  popup_result_timeout: "로그인 창에서 응답이 오지 않아 다른 방식으로 다시 시도합니다.",
+  redirect_result_failed: "로그인 결과를 확인하지 못했습니다. 다시 시도해 주세요.",
+  unauthorized_domain: "이 주소에서는 로그인이 허용되어 있지 않습니다. 관리자에게 문의해 주세요.",
+  account_exists_with_different_credential: "같은 이메일로 다른 방식의 계정이 이미 있습니다. 이메일 로그인을 사용해 주세요.",
+  network_request_failed: "네트워크 연결을 확인한 뒤 다시 시도해 주세요.",
+  signin_failed: "로그인을 완료하지 못했습니다. 다시 시도해 주세요.",
+  invalid_email: "이메일 주소 형식을 확인해 주세요.",
+  weak_password: "비밀번호는 6자 이상으로 정해 주세요.",
+  email_already_in_use: "이미 가입된 이메일입니다. 로그인을 이용해 주세요.",
+  invalid_credentials: "이메일 또는 비밀번호가 올바르지 않습니다.",
+  too_many_requests: "시도가 많아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+  connection_timeout: "서버 연결이 지연되고 있습니다.",
+  connection_error: "서버에 연결하지 못했습니다.",
+  firebase_init_failed: "서버 설정을 확인하지 못했습니다.",
+};
 
 async function upsertUserDoc(user) {
   if (!FIREBASE_ENABLED || !isFirestoreReady()) return;
@@ -79,33 +143,59 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    let settled = false;
+    // RC1.2.2 P0-5 — initialResolved는 "첫 응답이 왔는가"만 판단한다. 예전에는 이 플래그
+    // 하나로 구독 전체를 잠가서, 최초 null 응답 이후에 오는 로그인 성공 이벤트까지 무시했다.
+    // 그래서 Google 계정을 선택해 로그인이 실제로 성사돼도 currentUser가 갱신되지 않고
+    // 앱이 로그인 화면에 그대로 머물렀다. 이제 이후 상태 변화는 항상 반영한다.
+    let initialResolved = false;
     const timeoutId = setTimeout(() => {
-      if (settled) return;
-      settled = true;
+      if (initialResolved) return;
+      initialResolved = true;
       console.error("[Auth] 초기화 타임아웃(12초)");
       setAuthError("connection_timeout");
       setAuthLoading(false);
     }, AUTH_INIT_TIMEOUT_MS);
 
+    // 세션이 새로고침·재방문 후에도 유지되도록 명시한다(기본값에 의존하지 않는다).
+    setPersistence(authInstance, browserLocalPersistence).catch((e) => {
+      console.warn("[Auth] persistence 설정 실패:", e?.code || e?.name);
+    });
+
     const unsubscribe = onAuthStateChanged(
       authInstance,
       (user) => {
-        if (settled) return; // 타임아웃 이후 늦게 온 응답은 재시도 흐름과 겹치지 않게 무시
-        settled = true;
-        clearTimeout(timeoutId);
+        if (!initialResolved) {
+          initialResolved = true;
+          clearTimeout(timeoutId);
+        }
         setCurrentUser(user);
         setAuthLoading(false);
+        if (user) setAuthError(null); // 로그인에 성공하면 이전 오류 안내를 지운다
       },
       (error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeoutId);
-        console.error("[Auth] onAuthStateChanged 오류:", error);
+        if (!initialResolved) {
+          initialResolved = true;
+          clearTimeout(timeoutId);
+        }
+        console.error("[Auth] onAuthStateChanged 오류:", error?.code || error?.name);
         setAuthError("connection_error");
         setAuthLoading(false);
       }
     );
+
+    // redirect 방식으로 로그인한 경우, 앱이 다시 뜰 때 그 결과를 여기서 회수한다.
+    getRedirectResult(authInstance)
+      .then((result) => {
+        if (result?.user) {
+          setCurrentUser(result.user);
+          setAuthError(null);
+          upsertUserDoc(result.user);
+        }
+      })
+      .catch((e) => {
+        console.error("[Auth] redirect 결과 처리 실패:", e?.code || e?.name);
+        setAuthError("redirect_result_failed");
+      });
 
     return () => {
       clearTimeout(timeoutId);
@@ -121,7 +211,7 @@ export function AuthProvider({ children }) {
       if (displayName) await updateProfile(cred.user, { displayName });
       await upsertUserDoc({ ...cred.user, displayName });
     } catch (e) {
-      setAuthError(e.message);
+      setAuthError(normalizeAuthErrorCode(e));
       throw e;
     }
   }, []);
@@ -133,7 +223,7 @@ export function AuthProvider({ children }) {
       const cred = await signInWithEmailAndPassword(getAuthInstance(), email, password);
       await upsertUserDoc(cred.user);
     } catch (e) {
-      setAuthError(e.message);
+      setAuthError(normalizeAuthErrorCode(e));
       throw e;
     }
   }, []);
@@ -141,14 +231,56 @@ export function AuthProvider({ children }) {
   const loginWithGoogle = useCallback(async () => {
     if (!FIREBASE_ENABLED) { setCurrentUser(DEMO_USER); return; }
     setAuthError(null);
-    try {
-      const cred = await signInWithPopup(getAuthInstance(), makeGoogleProvider());
-      await upsertUserDoc(cred.user);
-    } catch (e) {
-      if (e.code !== "auth/popup-closed-by-user") {
-        setAuthError(e.message);
-        throw e;
+
+    const authInstance = getAuthInstance();
+    if (!authInstance) { setAuthError("firebase_init_failed"); return; }
+
+    const provider = makeGoogleProvider();
+
+    // 모바일·WebKit에서는 popup 핸드셰이크가 자주 완료되지 않으므로 처음부터 redirect를 쓴다.
+    if (prefersRedirectFlow()) {
+      try {
+        await signInWithRedirect(authInstance, provider);
+      } catch (e) {
+        console.error("[Auth] redirect 시작 실패:", e?.code || e?.name);
+        setAuthError(normalizeAuthErrorCode(e));
       }
+      return; // 페이지가 이동하므로 이후 코드는 실행되지 않는다
+    }
+
+    // 데스크톱: popup 우선. 단, 결과가 오지 않는 상태로 매달려 있지 않도록 타임아웃을 건다.
+    try {
+      const timeout = new Promise((_, reject) => {
+        setTimeout(() => {
+          const err = new Error("popup result timeout");
+          err.code = "popup_result_timeout";
+          reject(err);
+        }, POPUP_RESULT_TIMEOUT_MS);
+      });
+      const cred = await Promise.race([signInWithPopup(authInstance, provider), timeout]);
+      if (cred?.user) await upsertUserDoc(cred.user);
+      return;
+    } catch (e) {
+      const code = normalizeAuthErrorCode(e);
+
+      // 사용자가 직접 창을 닫은 경우는 오류로 소란스럽게 알리지 않는다.
+      if (code === "popup_closed") { setAuthError(code); return; }
+
+      // popup이 막혔거나 결과가 오지 않았다면 조용히 실패하지 않고 redirect로 이어간다.
+      if (code === "popup_blocked" || code === "popup_result_timeout" || code === "signin_failed") {
+        setAuthError(code);
+        try {
+          await signInWithRedirect(authInstance, provider);
+          return;
+        } catch (e2) {
+          console.error("[Auth] popup 실패 후 redirect도 실패:", e2?.code || e2?.name);
+          setAuthError(normalizeAuthErrorCode(e2));
+          return;
+        }
+      }
+
+      console.error("[Auth] Google 로그인 실패:", e?.code || e?.name);
+      setAuthError(code);
     }
   }, []);
 
@@ -163,7 +295,7 @@ export function AuthProvider({ children }) {
     try {
       await sendPasswordResetEmail(getAuthInstance(), email);
     } catch (e) {
-      setAuthError(e.message);
+      setAuthError(normalizeAuthErrorCode(e));
       throw e;
     }
   }, []);
