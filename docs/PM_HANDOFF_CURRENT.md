@@ -82,4 +82,27 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
 - **대표 iPhone Safari UAT 대기** — 인증 이후 화면(홈 CTA·기록 허브·타임라인·관찰 추이)은 로그인이
   필요해 자동 E2E로 검증되지 않음. 실기기 로그인 UAT 필요.
 - **P0-13 미착수** — 위 다음-앱-작업 항목 그대로 유지.
-- **Firestore Rules 미배포** — 이번 FIX-1은 `firestore.rules` 변경 없음(hosting만 배포).
+- **Firestore Rules 미배포** — FIX-1 자체는 `firestore.rules` 변경 없음(hosting만 배포). Rules 배포는 아래 별도 단계에서 진행.
+
+## Staging Firestore Rules 배포 (완료)
+
+- **대표 iPhone Safari 로그인 UAT 통과** — waiting 홈 CTA / 기록 허브 / 타임라인 펼침·접힘 /
+  Invalid Date 0건 / 관찰 추이 표시 5항목 확인.
+- **Staging Rules 배포 완료** — `firebase deploy --only firestore:rules --project jointrun-staging`.
+  대상 projectId **jointrun-staging** 단일, 컴파일 성공·권한 오류 없음. Functions·Hosting 재배포 없음.
+- 배포된 `firestore.rules`는 **emulator 47/47 검증본(`d66e3d4`)과 byte-identical**(그 이후 rules 변경 없음).
+- 배포 범위: P0-14 V9 스키마 검증(Event/Capture/Recheck/Comparison/Decision/Outcome),
+  저장 금지 필드 방어(rawFrames·landmarks·displayGeometry·rawLandmarks 등 + landmarksRef null만),
+  contourObservations(front/fanLateral) 구조, legacy scans/raw 신규 저장 차단(기존 read 유지).
+- **저장·복원 회귀(코드 레벨) 통과** — P0-14 단위 56/56(개인정보 fail-closed, 실패값 null/관찰 어려움
+  (0 아님), front·fanLateral 분리, captureSanitize 재귀 금지키 검사).
+- **라이브 인증 저장·복원 회귀는 대표 직접 수행 대기** — Staging 로그인(인증)이 필요해 자동화 불가.
+  대표가 QA/격리 기록으로 기준선 저장→front contour→fanLateral 부분성공→max_comfortable_fist→
+  새로고침/재로그인→동일 capture 복원(정면·측면·굽힘, 실패값 null/관찰 어려움, permission-denied 0,
+  개인정보 저장 0)을 1회 확인.
+
+## 최종 앱 동결
+
+- 앱 기능 구현 동결. **P0-13 미착수 유지**(2026-08-14 제출 이후 검토).
+- 새 PR 생성 금지 · main·Production 변경 금지.
+- **다음 우선순위: 사업계획서·활동보고서 V11**(앱 코드 아님).
