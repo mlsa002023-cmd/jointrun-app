@@ -10,13 +10,12 @@
 // 유도하기 위한 nonce. 값이 바뀔 때마다 한 번 스크롤·포커스하고 잠깐 강조 테두리를 보여준다.
 import { useEffect, useRef, useState } from "react";
 import { RECHECK_INTERVAL_DAYS } from "../../lib/recheckSchedule";
+import { toValidDate } from "../../lib/dateValue";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function toDate(value) {
-  if (!value) return null;
-  return value?.toDate ? value.toDate() : new Date(value);
-}
+// FIX-1 §4 — 공통 날짜 변환 사용(Firestore Timestamp / {seconds,nanoseconds} 안전 처리).
+const toDate = toValidDate;
 
 // 디자인 원본은 "7/1" 형태를 쓴다 — toLocaleDateString("ko-KR")은 "7. 1."로 나오므로 직접 만든다.
 function fmtShort(date) {

@@ -14,6 +14,7 @@ import {
 import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
 import { useV9Agenda } from "../hooks/useV9Agenda";
+import { formatDateValue } from "../lib/dateValue";
 import { useV9Repository } from "../hooks/useV9Repository";
 import { shouldShowQaTools, FEATURE_FLAGS } from "../config/featureFlags";
 import DecisionLoopFlow from "./v9/DecisionLoopFlow";
@@ -393,6 +394,27 @@ useEffect(() => {
                         결과 기록하기
                       </button>
                     )}
+                    {/* FIX-1 §1 — 재확인 대기(2주/4주)에도 실행 가능한 CTA를 항상 둔다. '오늘 상태 메모하기'는
+                        EventMarker(증상·상황 메모)를 재사용하며 새 카메라 측정을 만들지 않는다. 예정일·D-day는
+                        HomeAgendaCard의 label·진행 슬라이더로 이미 표시된다. */}
+                    {(agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && (
+                      <>
+                        <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setShowEventMarker(true); }}
+                          style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                          오늘 상태 메모하기
+                        </button>
+                        <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key, secondary: "timeline" }); setActiveTab("timeline"); }}
+                          style={{marginTop:10,width:"100%",minHeight:44,background:"white",color:"#122A5C",border:"1px solid #E1E7EF",borderRadius:12,fontSize:14,fontWeight:800}}>
+                          타임라인 보기
+                        </button>
+                      </>
+                    )}
+                    {agenda.key === "loop_completed" && (
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setBaselineFlow(true); }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        새 판단 기록 시작하기
+                      </button>
+                    )}
                     {/* shouldShowQaTools()가 false면(production 항상 false) 아무것도 렌더링되지 않는다.
                         2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 QA 전용 버튼. */}
                     {shouldShowQaTools(currentUser) && (agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && agenda.recheck && (
@@ -488,15 +510,43 @@ useEffect(() => {
                   // V10 기본: 각도 관찰으로 첫 기준선을 만든다(Trigger→Hand→Angle→symptom_pending).
                   <AngleObservationFlow mode="baseline" event={null} onClose={() => setActiveTab("home")} onGoToNextAction={goToNextAction} />
                 ) : (
-                  // 이미 기준선 기록이 있는 경우 — 재측정 대신 타임라인/홈으로 안내.
-                  <div style={{ padding: "40px 24px", textAlign: "center" }}>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: "#16213D" }}>이미 기준선 기록이 있어요</p>
-                    <p style={{ fontSize: 13, color: "#5B6478", marginTop: 8, lineHeight: 1.6 }}>
-                      다음 행동은 홈의 &lsquo;지금 필요한 기록&rsquo; 카드에서 이어서 진행할 수 있어요.
-                    </p>
-                    <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 20 }}>
-                      <button onClick={() => setActiveTab("home")} style={{ minHeight: 48, padding: "0 20px", background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>홈으로</button>
-                      <button onClick={() => setActiveTab("timeline")} style={{ minHeight: 48, padding: "0 20px", background: "white", color: "#122A5C", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>타임라인 보기</button>
+                  // FIX-1 §2 — 기준선이 있을 때도 막다른 화면 대신 agenda 기반 '기록 허브'를 보여준다.
+                  // 각 상태의 다음 행동으로 바로 이어지며, 추가 카메라 측정을 무제한 만들지 않는다.
+                  <div style={{ padding: "28px 20px", paddingBottom: "calc(28px + env(safe-area-inset-bottom))" }} data-testid="record-hub">
+                    <p style={{ fontSize: 11.5, fontWeight: 700, color: "#5B6478" }}>지금 필요한 기록</p>
+                    <h2 style={{ margin: "6px 0 4px", fontSize: 20, fontWeight: 900, color: "#16213D", lineHeight: 1.35 }}>
+                      {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting")
+                        ? "다음 관절 재확인 일정이 있어요"
+                        : (agenda?.label ?? "기록")}
+                    </h2>
+                    {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting") && agenda?.recheck && (
+                      <p style={{ fontSize: 13, color: "#5B6478", marginTop: 4 }}>예정일 · {formatDateValue(agenda.recheck.dueAt)}</p>
+                    )}
+                    <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+                      {agenda?.key === "symptom_pending" && (
+                        <button onClick={() => { trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_ENTRY_STARTED, currentUser?.uid, { eventId: agenda.eventId }); setSymptomEntry({ eventId: agenda.eventId, captureId: agenda.baselineCaptureId }); }}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>증상·상황 기록하기</button>
+                      )}
+                      {agenda?.key === "recheck_ready" && (
+                        <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>지금 재확인하기</button>
+                      )}
+                      {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting") && (
+                        <button onClick={() => setShowEventMarker(true)}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>오늘 상태 메모하기</button>
+                      )}
+                      {agenda?.key === "awaiting_decision" && (
+                        <button onClick={() => setDecisionLoop({ mode: "decision" })}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>결과 기록하기</button>
+                      )}
+                      {agenda?.key === "loop_completed" && (
+                        <button onClick={() => setBaselineFlow(true)}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>새 판단 루프 시작</button>
+                      )}
+                      <button onClick={() => setActiveTab("timeline")}
+                        style={{ minHeight: 44, background: "white", color: "#122A5C", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>타임라인 보기</button>
+                      <button onClick={() => setActiveTab("home")}
+                        style={{ minHeight: 44, background: "white", color: "#5B6478", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 700 }}>홈으로</button>
                     </div>
                   </div>
                 )
