@@ -1,0 +1,72 @@
+# PM_HANDOFF_CURRENT
+
+JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당자가 이 파일과 커밋을 source of truth로 삼는다.
+
+## 저장소 / 브랜치 / 배포
+
+- 저장소: `mlsa002023-cmd/jointrun-app`
+- 작업 브랜치: `feat/v9-design-integration`
+- 현재 HEAD SHA: `d66e3d4`
+- Draft PR: #17 (Draft 유지 — main 병합 안 함)
+- 공식 Staging: https://jointrun-staging.firebaseapp.com
+- Staging 배포 SHA: `d66e3d4` (Firebase Hosting `jointrun-staging`, **hosting만** 배포)
+- main·Production·운영 Firebase: **미변경**
+
+## 완료된 작업
+
+### P0-11.1 (승인 기준점 `989b673`)
+- DIP 캘리퍼 좌표 정합, 분석 캔버스 절대 픽셀 → normalized video coordinate
+- DIP landmark ↔ 캘리퍼 중심 정합, 손 이동 시 최신 geometry 추적
+- 손 미검출·포즈 전환 시 stale overlay 제거, transient geometry 저장 0건
+
+### P0-14 FINAL (`d66e3d4`) — 3-포즈 관찰 프로토콜
+- 동작 3개 유지, OK 포즈 유지(‘정밀 조절력’ 목적 제거하고 측면 외곽 관찰로 재정의)
+  1. `front_spread` 정면 관절·외곽 관찰
+  2. `ok_fan_lateral` OK 부채꼴 측면 외곽 관찰(손가락별 부분 성공 허용)
+  3. `max_comfortable_fist` 개인이 가능한 범위의 굽힘 관찰(캘리퍼 없음)
+- 공통 상태머신 `aligning → holding → confirmed`(최소 1.5초 + 유효 프레임, debounce,
+  잘못된 자세 자동 승인 금지) — 순수 모듈 `poseHoldMachine` / 자세 판정 `poseProtocol.evaluatePoseFrame`
+- 측면 외곽: P0-11.1 scan-line·normalized 좌표 재사용, 해부학적 방향 미부여(sideA/sideB·unsigned 비대칭)
+- 정면·측면 데이터 별도 저장(`contourObservations.front` / `.fanLateral`), 같은 viewType·같은
+  `poseProtocolVersion`끼리만 비교, 다르면 `pose_protocol_mismatch`로 차단(기준선은 “이전 방식 기록”)
+- 버전: `CAPTURE_PROTOCOL_VERSION v1.1`, `ALGORITHM_VERSION v1.2`,
+  `POSE_PROTOCOL_VERSION front-fan-fist-v1`, DIP contour `dip-contour-v2`
+- 개인정보: 사진·영상·raw landmark·displayGeometry·좌표를 저장하지 않음. 저장 직전
+  재귀 금지키 검사(`captureSanitize`)로 fail-closed. Firestore Rules 최상위 금지 필드 확대.
+
+## 테스트 결과 (HEAD `d66e3d4`)
+
+- unit: **368/368** 통과
+- Firestore Rules(emulator): **47/47** 통과 (P0-14 신규 금지 필드·contourObservations 형태 포함)
+- lint: **0 errors** (경고는 기존 react-refresh 계열)
+- build: 성공
+- Chromium E2E(Staging): 통과
+- WebKit E2E(로컬 부팅 회귀 + Staging): 통과
+- Staging E2E: 통과, 배포 SHA `d66e3d4` 확인, console error 0 / pageerror 0
+
+## 미배포 / 대기
+
+- **Firestore Rules는 아직 배포하지 않았다.** 규칙 변경은 emulator 47/47로 검증됐으나 배포는
+  대표의 명시적 승인이 필요한 절차라서 보류했다(신규 필드는 additive라 기존 규칙에서도 저장은 통과).
+- **대표 실기기(iPhone Safari) UAT 대기.** 자동 WebKit 검증은 실기기 검증이 아니다.
+
+## 대표 실기기 UAT 확인 항목 (1회)
+
+1. 정면 단계 — 네 DIP 캘리퍼가 관절에 붙고, 손을 움직이면 따라온다
+2. OK 측면 단계 — 손날·엄지검지·부채꼴 안내가 이해되고, 유효 손가락 DIP에 측면 캘리퍼가
+   표시되며, 가려진 손가락에 떠 있는 캘리퍼가 없다
+3. 굽힘 단계 — 가능한 범위로 쥐는 안내가 나오고, 캘리퍼가 표시되지 않는다
+4. 결과 — 정면·측면·굽힘이 분리되고, 실패값이 0이 아니라 “관찰 어려움”으로 표시된다
+
+## 다음 앱 작업 (아직 시작하지 않음)
+
+- **P0-13 FINAL** — 로그인 없는 체험 / 한줄 결과 / 로그인 후 기준선 승격 / 2주·4주 반복·캘린더 구조
+- 아직 미착수(P0-14 완료 후 앱 재동결 상태): P0-13 공개 체험, `/try`, 게스트 측정·기준선 승격,
+  캘린더·이메일·카카오 알림, 결제, main 병합, Production 배포
+
+## 제출 문서 작업 비민감 방침 (참고)
+
+- 자체 설문 n=70은 2026년 7월 실제 실시(“70명 목표”는 구식 표현). 증빙 없는 퍼센트는 생성·사용 금지.
+- 제출 문서의 앱 주소는 **검증용 프로토타입** Staging(`jointrun-staging.firebaseapp.com`)으로 표기.
+  검증 빌드 SHA는 기술 근거란·각주·부록에만 표기. vercel/jointrun.kr은 향후 계획으로만 구분.
+- 비공개 제출 문서는 `local-private/`에 두고 Git 추적 금지(.gitignore 적용).
