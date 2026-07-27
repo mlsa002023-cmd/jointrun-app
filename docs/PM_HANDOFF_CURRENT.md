@@ -101,6 +101,22 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
   새로고침/재로그인→동일 capture 복원(정면·측면·굽힘, 실패값 null/관찰 어려움, permission-denied 0,
   개인정보 저장 0)을 1회 확인.
 
+## 리포트 화면 오해 방지 패치 (SHA `f1b5eff`, Staging Hosting 배포)
+
+최소 보정만 — 새 리포트 계산·자동 호전/악화 판정·측정 알고리즘·Firestore 스키마 변경 없음.
+
+- 용어: "내 손의 디지털 바이오마커" → **"내 손의 관찰 지표"** (Digital Biomarkers → Observation Metrics).
+  일반 사용자 노출 "디지털 바이오마커" 0건.
+- 4주 리포트 게이트: 동일 측정 방식(같은 poseProtocolVersion·handSide)의 **기준선+재확인 2시점**이
+  있을 때만 "4주 리포트 보기" 활성. 그 전에는 "4주 재확인을 완료하면 관찰 기록을 한눈에 볼 수
+  있어요." 안내만 표시하고 패턴·대표 변화 판정을 노출하지 않음(`computeObservationTimepoints` 재사용).
+- 이번 달 기록: 현재 집계 소스(레거시 events)가 V9 Event/Capture/증상 메모를 포함하지 않아
+  빈 결과가 "기록 없음"을 신뢰성 있게 뜻하지 못함 → 빈 경우 카드를 숨겨 **거짓 '이벤트 없음' 0건**.
+  (V9 소스 연동은 최소 패치 범위 밖으로 보류.)
+- 관찰 추이(TimelineModule): 동일 측정 방식 2시점 규칙·1시점 placeholder 그대로 유지.
+- 검증: unit 382/382, lint 0 errors, build 성공, Staging E2E 부팅 헬스(console/pageerror 0, projectId,
+  not-dirty) WebKit·Chromium 통과. 배포 번들에 SHA `f1b5eff` 확인.
+
 ## 최종 앱 동결
 
 - 앱 기능 구현 동결. **P0-13 미착수 유지**(2026-08-14 제출 이후 검토).
