@@ -312,6 +312,43 @@ describe("하위 컬렉션(captures/rechecks/comparisons) — 동일 원칙 적�
     await assertFails(addDoc(col, { ...validAngleCapture, fingerHealthScore: 77 }));
   });
 
+  // ── P0-14 — 정면/측면 분리 저장·포즈 프로토콜·추가 금지 필드 ──
+  it("P0-14 captures: poseProtocolVersion(string) + contourObservations(front/fanLateral)을 저장할 수 있다", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertSucceeds(addDoc(col, {
+      ...validAngleCapture,
+      poseProtocolVersion: "front-fan-fist-v1",
+      dipContourObservation: dipContour,
+      contourObservations: {
+        front: { viewType: "front_spread", recordingStatus: "completed", comparisonQualityStatus: "unverified", fingers: dipContour.fingers },
+        fanLateral: { viewType: "ok_fan_lateral", recordingStatus: "completed", comparisonQualityStatus: "unverified", fingers: [{ key: "middle", sideProfileObserved: true, dipSideProfileRatio: 1.1 }] },
+      },
+    }));
+  });
+
+  it("P0-14 captures: contourObservations에 front/fanLateral 외의 키가 오면 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, {
+      ...validAngleCapture,
+      contourObservations: { front: {}, sneaky: { photo: "x" } },
+    }));
+  });
+
+  it("P0-14 captures: displayGeometry·imageData·contourPath 등 신규 금지 필드는 쓰기 거부", async () => {
+    const db = testEnv.authenticatedContext(uid).firestore();
+    await seedEvent(db);
+    const col = collection(db, "users", uid, "v9Events", "evt1", "captures");
+    await assertFails(addDoc(col, { ...validAngleCapture, displayGeometry: { dipCenter: { x: 1 } } }));
+    await assertFails(addDoc(col, { ...validAngleCapture, imageData: "AAAA" }));
+    await assertFails(addDoc(col, { ...validAngleCapture, contourPath: [{ x: 1 }] }));
+    await assertFails(addDoc(col, { ...validAngleCapture, segmentationMask: "AAAA" }));
+    await assertFails(addDoc(col, { ...validAngleCapture, rawLandmarks: [{ x: 1 }] }));
+  });
+
   it("RC1.2 captures: symptomSnapshot은 null→객체 1회만 붙일 수 있고, 다른 필드 변경은 거부", async () => {
     const db = testEnv.authenticatedContext(uid).firestore();
     await seedEvent(db);

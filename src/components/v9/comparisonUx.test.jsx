@@ -84,7 +84,7 @@ describe("§3 표기 정합성", () => {
 describe("§4 외곽 폭 라벨", () => {
   it("무엇 대비 비율인지 라벨에 드러낸다", () => {
     renderCompare();
-    expect(screen.getAllByText("인접 마디 대비 외곽 폭").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("정면 외곽 폭(인접 마디 대비)").length).toBeGreaterThan(0);
   });
 });
 

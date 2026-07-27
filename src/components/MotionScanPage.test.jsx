@@ -212,6 +212,19 @@ describe("MotionScanPage captureMode(RC1.2 각도 관찰) — production 기본"
     }
   });
 
+  // P0-14 §11·§15F — 결과 화면이 정면/측면/굽힘으로 분리되고, 실패 측면은 0이 아니라 "관찰 어려움".
+  it("결과 화면이 정면·측면·굽힘으로 분리되고 측면 결과가 표시된다", async () => {
+    renderCapture();
+    await enterCompleted();
+    await screen.findByRole("button", { name: "다음 단계로 이동" });
+    expect(screen.getByText("정면 끝마디 관찰")).toBeInTheDocument();
+    expect(screen.getByText("측면 끝마디 관찰")).toBeInTheDocument();
+    expect(screen.getByText("굽힘·활동 범위")).toBeInTheDocument();
+    // 측면 결과 카드가 렌더된다.
+    expect(screen.getByTestId("side-profile-result")).toBeInTheDocument();
+    expect(screen.getByTestId("flexion-range")).toBeInTheDocument();
+  });
+
   it("각도 저장 성공 후에만 '다음 단계로'가 활성화된다", async () => {
     let resolve;
     const onAngleMeasured = vi.fn(() => new Promise((r) => { resolve = r; }));
