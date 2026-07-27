@@ -70,3 +70,16 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
 - 제출 문서의 앱 주소는 **검증용 프로토타입** Staging(`jointrun-staging.firebaseapp.com`)으로 표기.
   검증 빌드 SHA는 기술 근거란·각주·부록에만 표기. vercel/jointrun.kr은 향후 계획으로만 구분.
 - 비공개 제출 문서는 `local-private/`에 두고 Git 추적 금지(.gitignore 적용).
+
+## UAT FIX-1 (완료 SHA `3601364`)
+
+- 홈 CTA 복구 — waiting(2주/4주) 상태에서도 실행 가능한 CTA 제공("오늘 상태 메모하기" + 타임라인 보기).
+- 기록하기 탭 상태별 허브 — 막다른 화면 제거, agenda 상태별 다음 행동으로 이어지는 기록 허브.
+- 타임라인 압축 — 최신 루프만 기본 펼침, 이전 루프 접기, 최근 3개 노드 + 전체 보기.
+- 날짜 정합 — 공통 `toValidDate`/`formatDateValue`로 통일, "Invalid Date" 노출 제거.
+- 신규 관찰 추이 — V9 기준선·재확인 capture(같은 handSide·poseProtocolVersion, 2시점 이상)만으로
+  관찰 시점을 표시. 레거시 scans 그래프는 `absoluteScoreUiEnabled`/QA 내부에만 유지.
+- **대표 iPhone Safari UAT 대기** — 인증 이후 화면(홈 CTA·기록 허브·타임라인·관찰 추이)은 로그인이
+  필요해 자동 E2E로 검증되지 않음. 실기기 로그인 UAT 필요.
+- **P0-13 미착수** — 위 다음-앱-작업 항목 그대로 유지.
+- **Firestore Rules 미배포** — 이번 FIX-1은 `firestore.rules` 변경 없음(hosting만 배포).
