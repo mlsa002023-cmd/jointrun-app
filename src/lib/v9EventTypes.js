@@ -9,10 +9,22 @@
 // ─────────────────────────────────────────────
 
 export const V9_SCHEMA_VERSION = "v1.0";
-export const CAPTURE_PROTOCOL_VERSION = "v1.0";
-// RC1.2.2 P0-8 — PIP 평균 ROM에서 DIP/PIP 관절별 관찰로 확장. 이전 버전(v1.0)으로 기록된
-// capture는 관절별 필드가 없으므로, 비교 화면에서 세대를 구분할 때 이 값을 본다.
-export const ALGORITHM_VERSION = "v1.1";
+// P0-14 — 3-포즈 관찰 프로토콜(정면·측면·굽힘)과 저장 구조가 바뀌어 버전을 올린다(v1.0 → v1.1).
+export const CAPTURE_PROTOCOL_VERSION = "v1.1";
+// RC1.2.2 P0-8 — PIP 평균 ROM에서 DIP/PIP 관절별 관찰로 확장(v1.0 → v1.1).
+// P0-14 — 측면(fanLateral) 외곽 프로파일 관찰을 추가하며 v1.1 → v1.2. 이전 버전으로 기록된
+// capture는 측면 관찰이 없으므로, 비교 화면에서 세대를 구분할 때 이 값을 본다.
+export const ALGORITHM_VERSION = "v1.2";
+// P0-14 — 포즈 프로토콜 식별자. 구형(포즈 프로토콜 값이 없는) 기록과 신규 기록을 구분해
+// pose_protocol_mismatch를 판정하는 기준이다. 자동 마이그레이션·값 추정은 하지 않는다.
+export const POSE_PROTOCOL_VERSION = "front-fan-fist-v1";
+
+// P0-14 — 관찰 시점(정면/측면)을 구분하는 viewType. 같은 viewType끼리만 비교한다(§12).
+export const VIEW_TYPE = {
+  FRONT_SPREAD: "front_spread",
+  OK_FAN_LATERAL: "ok_fan_lateral",
+  MAX_COMFORTABLE_FIST: "max_comfortable_fist",
+};
 
 export const EVENT_STATUS = {
   DRAFT: "draft",
@@ -160,6 +172,13 @@ export const V9_ANALYTICS_EVENTS = {
   DIP_OVERLAY_STARTED: "dip_contour_overlay_started",
   DIP_OVERLAY_COMPLETED: "dip_contour_overlay_completed",
   DIP_OVERLAY_RETRY_SHOWN: "dip_contour_overlay_retry_shown",
+  // P0-14 §14 — 3-포즈 상태머신 이벤트. 파라미터는 poseId·coachCode·validFingerCount·
+  // recordingStatus만 허용한다. 각도·외곽 비율·raw 좌표·증상·식별자는 절대 담지 않는다.
+  POSE_ALIGNING_STARTED: "pose_aligning_started",
+  POSE_HOLDING_STARTED: "pose_holding_started",
+  POSE_CONFIRMED: "pose_confirmed",
+  POSE_COACHING_SHOWN: "pose_coaching_shown",
+  FAN_LATERAL_PARTIAL_RECORDED: "fan_lateral_partial_recorded",
   OBSERVATION_SUMMARY_VIEWED: "observation_summary_viewed",
   ONBOARDING_STARTED: "onboarding_started",
   CONSENT_COMPLETED: "consent_completed",
