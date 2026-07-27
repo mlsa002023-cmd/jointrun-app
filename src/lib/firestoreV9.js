@@ -23,11 +23,12 @@ import {
   query, orderBy, limit, serverTimestamp, runTransaction,
 } from "firebase/firestore";
 import {
-  V9_SCHEMA_VERSION, CAPTURE_PROTOCOL_VERSION, ALGORITHM_VERSION,
+  V9_SCHEMA_VERSION, CAPTURE_PROTOCOL_VERSION, ALGORITHM_VERSION, POSE_PROTOCOL_VERSION, VIEW_TYPE,
   EVENT_STATUS, RECHECK_STATUS, RECHECK_DUE_TYPE, CAPTURE_TYPE,
   RECORDING_STATUS, COMPARISON_QUALITY_STATUS,
 } from "./v9EventTypes";
 import { computeRecheckDueDates } from "./recheckSchedule";
+import { assertNoForbiddenCaptureKeys } from "./captureSanitize";
 import { MOCK_CAPTURE_ENABLED } from "../config/featureFlags";
 
 const APP_VERSION = "1.0.0";
@@ -144,27 +145,54 @@ export async function saveCapture(uid, eventId, { type, handSide, qualityStatus,
 export async function saveObservationalAngleCapture(uid, eventId, {
   handSide, perFingerObservedRomDeg, averageObservedRomDeg,
   perFingerJointObservation, deviationDirection, dipContourObservation,
+  sideProfileObservation, fanRecordingStatus, recordingStatus,
   captureType = CAPTURE_TYPE.BASELINE, qualityFlags,
 }) {
   if (!uid || !eventId) return null;
   // RC1.2.1 §3 — "기록 완료"와 "비교 품질 검증"을 분리한다. 각도 흐름은 조명·거리·흔들림을
   // 실제로 검증하지 않으므로 comparisonQualityStatus는 unverified로 둔다(pass 금지).
+  // P0-14 §9 — 정면(front)·측면(fanLateral) 관찰을 viewType별로 분리해 저장한다.
+  const frontFingers = dipContourObservation?.fingers ?? null;
+  const fanFingers = sideProfileObservation?.fingers ?? null;
+  const contourObservations = {
+    front: frontFingers
+      ? {
+          viewType: VIEW_TYPE.FRONT_SPREAD,
+          recordingStatus: RECORDING_STATUS.COMPLETED,
+          comparisonQualityStatus: COMPARISON_QUALITY_STATUS.UNVERIFIED,
+          fingers: frontFingers,
+        }
+      : null,
+    fanLateral: fanFingers
+      ? {
+          viewType: VIEW_TYPE.OK_FAN_LATERAL,
+          // 부분 성공(일부 손가락만 관찰)이면 incomplete(§5·§10).
+          recordingStatus: fanRecordingStatus ?? RECORDING_STATUS.COMPLETED,
+          comparisonQualityStatus: COMPARISON_QUALITY_STATUS.UNVERIFIED,
+          fingers: fanFingers,
+        }
+      : null,
+  };
   const base = {
     schemaVersion: V9_SCHEMA_VERSION,
     eventId,
     type: captureType, // baseline | recheck (기존 리더 호환 유지)
     handSide: handSide ?? null,
+    // P0-14 — 포즈 프로토콜 식별자(구형 기록 구분·비교 게이트).
+    poseProtocolVersion: POSE_PROTOCOL_VERSION,
     // RC1.2.2 P0-8 — 관절별(DIP/PIP) 관찰이 주 기록이다. 파생 각도와 품질값만 담는다
     // (원본 사진·영상·landmark는 저장하지 않는다 — §9).
     perFingerJointObservation: perFingerJointObservation ?? [],
     deviationDirection: deviationDirection ?? null,
-    // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. 관찰에 실패하면 아예 싣지 않는다(0 저장 금지).
-    // 파생 비율·유효 프레임 수·안정성 값만 담고 이미지·마스크·윤곽 좌표는 담지 않는다.
+    // RC1.2.2 P0-9 / P0-14 — DIP 외곽 폭 관찰. 정면은 dipContourObservation(호환)과
+    // contourObservations.front(신규 source of truth)에 같은 값으로 담고, 측면은
+    // contourObservations.fanLateral에 담는다. 실패 손가락은 0으로 채우지 않는다.
     dipContourObservation: dipContourObservation ?? null,
+    contourObservations,
     // 이전 세대 리더(비교 화면 등) 호환을 위해 손가락 전체 활동 가동범위도 함께 남긴다.
     perFingerObservedRomDeg: perFingerObservedRomDeg ?? [],
     averageObservedRomDeg: averageObservedRomDeg ?? null,
-    recordingStatus: RECORDING_STATUS.COMPLETED,
+    recordingStatus: recordingStatus ?? RECORDING_STATUS.COMPLETED,
     comparisonQualityStatus: COMPARISON_QUALITY_STATUS.UNVERIFIED,
     qualityFlags: qualityFlags ?? [],
     symptomSnapshot: null, // 증상은 다음 단계에서 채운다(symptom_pending)
@@ -172,6 +200,9 @@ export async function saveObservationalAngleCapture(uid, eventId, {
     algorithmVersion: ALGORITHM_VERSION,
     appVersion: APP_VERSION,
   };
+  // §9·§15E — 저장 직전 재귀 금지키 검사(fail-closed). 사진·영상·landmark·displayGeometry 등이
+  // 중첩 어디에도 없어야 한다. 하나라도 있으면 예외로 저장을 중단한다.
+  assertNoForbiddenCaptureKeys(base);
   const isBaseline = captureType === CAPTURE_TYPE.BASELINE;
 
   if (isDemoStore()) {

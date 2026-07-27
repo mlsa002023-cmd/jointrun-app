@@ -20,11 +20,15 @@ service cloud.firestore {
             || data.baselineQualityStatus in ['pass', 'unreliable']);
     }
 
-    // RC1.2 — 개인정보 최소수집: capture에 원본/랜드마크/점수/추천 계열 필드가 오면 쓰기를 거부한다.
+    // RC1.2 / P0-14 — 개인정보 최소수집: capture 최상위에 원본·랜드마크·점수·추천·좌표(geometry)
+    // 계열 필드가 오면 쓰기를 거부한다(중첩 구조까지의 재귀 검사는 클라이언트 captureSanitize가
+    // fail-closed로 담당한다 — Firestore Rules는 최상위 키만 검사 가능).
     function hasNoForbiddenCaptureFields(data) {
       return !data.keys().hasAny(['rawFrames', 'landmarks', 'scores', 'recommendation',
                                   'fingerHealthScore', 'painIndex', 'stiffnessMin', 'metrics',
-                                  'photo', 'image', 'video'])
+                                  'photo', 'image', 'video', 'imageData', 'canvas',
+                                  'segmentationMask', 'contourPath', 'displayGeometry',
+                                  'transientGeometry', 'rawLandmarks'])
         // landmarksRef가 존재한다면 null만 허용(비어있음). 실제 참조 저장은 금지.
         && (!('landmarksRef' in data) || data.landmarksRef == null);
     }
@@ -57,6 +61,12 @@ service cloud.firestore {
         && (!('dipContourObservation' in data) || data.dipContourObservation == null
             || (data.dipContourObservation is map
                 && data.dipContourObservation.keys().hasOnly(['measurementVersion', 'fingers', 'qualityFlags'])))
+        // P0-14 — 포즈 프로토콜 식별자(문자열)와 정면·측면 분리 관찰(map). front/fanLateral 외의
+        // 키는 허용하지 않는다. 각 관찰은 viewType·recordingStatus·comparisonQualityStatus·fingers를 담는다.
+        && (!('poseProtocolVersion' in data) || data.poseProtocolVersion is string)
+        && (!('contourObservations' in data) || data.contourObservations == null
+            || (data.contourObservations is map
+                && data.contourObservations.keys().hasOnly(['front', 'fanLateral'])))
         && hasNoForbiddenCaptureFields(data);
     }
 

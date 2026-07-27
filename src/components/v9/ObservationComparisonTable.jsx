@@ -17,11 +17,18 @@ const LEGACY_PLACEHOLDER = "이전 방식 기록";
  * 한쪽 capture의 값을 화면 문자열로 만든다.
  * 그 세대에 항목 자체가 없으면(구형 기록) "이전 방식 기록"으로 구분한다 — "—"(관찰 실패)와 다르다.
  */
-function cellText(view, finger, render) {
+function cellText(view, finger, render, forceLegacy = false) {
   if (!view) return MISSING;
+  // P0-14 §12 — 포즈 프로토콜이 다르면 기준선 쪽은 "이전 방식 기록"으로 표시한다(직접 비교 금지).
+  if (forceLegacy) return LEGACY_PLACEHOLDER;
   if (view.generation === OBSERVATION_GENERATION.LEGACY_ROM) return LEGACY_PLACEHOLDER;
   if (!finger) return MISSING;
   return render(finger);
+}
+
+/** 측면 비대칭은 방향 없는 크기(%)만 표시한다(§6 — 해부학적 방향 확신 없음). */
+function sideAsymText(ratio) {
+  return Number.isFinite(ratio) ? `${Math.round(ratio * 100)}% 비대칭` : MISSING;
 }
 
 const cellStyle = (text) => ({
@@ -42,7 +49,7 @@ function Row({ label, baselineText, currentText }) {
 }
 
 /** 손가락 한 개의 DIP·PIP·외곽 관찰을 기준선/지금 두 열로 보여준다. */
-function FingerBlock({ pair, baselineView, currentView }) {
+function FingerBlock({ pair, baselineView, currentView, baselineAsLegacy = false }) {
   const rows = [
     {
       label: "끝마디 편 상태 굽힘",
@@ -57,12 +64,21 @@ function FingerBlock({ pair, baselineView, currentView }) {
       render: (f) => fmtDeg(f.dipActiveRomDeg),
     },
     {
-      label: "인접 마디 대비 외곽 폭",
+      label: "정면 외곽 폭(인접 마디 대비)",
       render: (f) => fmtPercent(f.contour?.dipWidthRatio),
     },
     {
-      label: "좌우 윤곽 비대칭",
+      label: "정면 좌우 윤곽 비대칭",
       render: (f) => fmtAsymmetry(f.contour?.contourAsymmetryRatio),
+    },
+    // P0-14 — 측면 외곽 프로파일(관찰된 경우만 값, 아니면 —).
+    {
+      label: "측면 외곽 프로파일",
+      render: (f) => fmtPercent(f.sideContour?.dipSideProfileRatio),
+    },
+    {
+      label: "측면 좌우 비대칭",
+      render: (f) => sideAsymText(f.sideContour?.sideProfileAsymmetryRatio),
     },
     {
       label: "중간마디 편 상태 굽힘",
@@ -85,7 +101,7 @@ function FingerBlock({ pair, baselineView, currentView }) {
         <Row
           key={r.label}
           label={r.label}
-          baselineText={cellText(baselineView, pair.baseline, r.render)}
+          baselineText={cellText(baselineView, pair.baseline, r.render, baselineAsLegacy)}
           currentText={cellText(currentView, pair.current, r.render)}
         />
       ))}
@@ -97,7 +113,7 @@ function FingerBlock({ pair, baselineView, currentView }) {
  * RC1.2.2 P0-12.1 §5 — 기본은 주요 관찰 손가락만 보여주고, 나머지는 접어 둔다.
  * @param {string[]} focusKeys 요약이 지목한 손가락(최대 2개). 없으면 앞의 2개를 쓴다.
  */
-export default function ObservationComparisonTable({ pairs, baselineView, currentView, focusKeys = [] }) {
+export default function ObservationComparisonTable({ pairs, baselineView, currentView, focusKeys = [], baselineAsLegacy = false }) {
   if (!pairs?.length) {
     return (
       <div style={{ fontSize: 12, color: "#64748b", padding: "10px 0" }}>
@@ -124,7 +140,7 @@ export default function ObservationComparisonTable({ pairs, baselineView, curren
     <div data-testid="observation-comparison">
       <Header />
       {focus.map((pair) => (
-        <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} />
+        <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} baselineAsLegacy={baselineAsLegacy} />
       ))}
 
       {rest.length > 0 && (
@@ -135,7 +151,7 @@ export default function ObservationComparisonTable({ pairs, baselineView, curren
           <div style={{ marginTop: 4 }}>
             <Header />
             {rest.map((pair) => (
-              <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} />
+              <FingerBlock key={pair.key} pair={pair} baselineView={baselineView} currentView={currentView} baselineAsLegacy={baselineAsLegacy} />
             ))}
           </div>
         </details>

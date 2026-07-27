@@ -130,6 +130,11 @@ export function evaluateComparability(baselineCapture, currentCapture) {
   if (hasJointObservation(baselineCapture) !== hasJointObservation(currentCapture)) {
     reasons.push("algorithm_version_mismatch");
   }
+  // P0-14 §12 — 포즈 프로토콜(측정 방식)이 다르면 관절별 수치를 직접 비교하지 않는다.
+  // 구형(포즈 프로토콜 값 없음) 기준선 ↔ 신규 재확인이 여기에 해당한다.
+  if ((baselineCapture.poseProtocolVersion ?? null) !== (currentCapture.poseProtocolVersion ?? null)) {
+    reasons.push("pose_protocol_mismatch");
+  }
 
   const unverified = [baselineCapture, currentCapture]
     .some((c) => c?.comparisonQualityStatus === "unverified");

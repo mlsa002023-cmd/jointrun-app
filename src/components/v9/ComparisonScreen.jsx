@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { evaluateComparability } from "../../lib/captureQuality";
 import {
-  toObservationView, pairFingerObservations, hasGenerationMismatch, OBSERVATION_GENERATION,
+  toObservationView, pairFingerObservations, hasGenerationMismatch, hasPoseProtocolMismatch, OBSERVATION_GENERATION,
 } from "../../lib/captureObservationAdapter";
 import ObservationComparisonTable from "./ObservationComparisonTable";
 import ObservationSummaryCard from "./ObservationSummaryCard";
@@ -33,6 +33,8 @@ const NON_COMPARABLE_LABEL = {
   missing_capture: "비교할 기록을 찾을 수 없어요",
   // RC1.2.2 P0-10 — 한쪽만 관절별 관찰을 가진 경우. 구형 기록을 신형 수치로 추정하지 않는다.
   algorithm_version_mismatch: "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다.",
+  // P0-14 §12 — 포즈 프로토콜(측정 방식) 불일치. 구형 기준선 ↔ 신규 재확인.
+  pose_protocol_mismatch: "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다.",
 };
 
 function fmtDate(date) {
@@ -83,6 +85,8 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
   const currentView = toObservationView(currentCapture);
   const pairs = pairFingerObservations(baselineView, currentView);
   const generationMismatch = hasGenerationMismatch(baselineView, currentView);
+  // P0-14 §12 — 세대(관절 관찰 유무) 또는 포즈 프로토콜이 다르면 직접 비교하지 않는다.
+  const protocolMismatch = generationMismatch || hasPoseProtocolMismatch(baselineView, currentView);
   const bothLegacy =
     baselineView?.generation === OBSERVATION_GENERATION.LEGACY_ROM &&
     currentView?.generation === OBSERVATION_GENERATION.LEGACY_ROM;
@@ -189,11 +193,11 @@ export default function ComparisonScreen({ baselineCapture, currentCapture, onSu
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 16, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 900, color: "#122A5C", marginBottom: 4 }}>손가락별 관절 관찰</div>
           <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10, lineHeight: 1.6 }}>
-            {generationMismatch
-              ? "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다."
+            {protocolMismatch
+              ? "기준선과 현재 기록의 측정 방식이 달라 관절별 수치를 직접 비교하지 않습니다. 현재 값만 표시하고 기준선은 이전 방식 기록으로 둡니다."
               : "각 시점에 관찰된 값을 나란히 놓았습니다. 좋아짐·나빠짐을 자동으로 판정하지 않습니다."}
           </div>
-          <ObservationComparisonTable pairs={pairs} baselineView={baselineView} currentView={currentView} focusKeys={summary?.focusFingerKeys ?? []} />
+          <ObservationComparisonTable pairs={pairs} baselineView={baselineView} currentView={currentView} focusKeys={summary?.focusFingerKeys ?? []} baselineAsLegacy={protocolMismatch} />
           <div style={{ marginTop: 12, fontSize: 10, color: "#94a3b8", lineHeight: 1.6 }}>
             외곽 폭은 인접 마디 대비 비율입니다. 이 값은 질환이나 붓기의 원인을 판정하지 않습니다.
           </div>

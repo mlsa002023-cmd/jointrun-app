@@ -110,12 +110,23 @@ function baselineFocusItems(view) {
     });
   }
 
+  // P0-14 §11 — 측면 외곽은 "측면 관찰이 유효한 경우에만" 후보로 쓴다(sideContour가 있을 때만).
+  const side = relativeStandout(candidates(fingers, (f) => f.sideContour?.dipSideProfileRatio));
+  if (side) {
+    items.push({
+      key: side.finger.key,
+      phrase: `${nameOf(side.finger)} 끝마디 측면 외곽`,
+      rank: 4,
+      margin: side.margin,
+    });
+  }
+
   const width = relativeStandout(candidates(fingers, (f) => f.contour?.dipWidthRatio));
   if (width) {
     items.push({
       key: width.finger.key,
       phrase: `${nameOf(width.finger)} 끝마디 외곽 폭`,
-      rank: 4,
+      rank: 5,
       margin: width.margin,
     });
   }
@@ -127,7 +138,7 @@ function baselineFocusItems(view) {
       items.push({
         key: pipFlex.finger.key,
         phrase: `${nameOf(pipFlex.finger)} 중간마디 굽힘`,
-        rank: 5,
+        rank: 6,
         margin: pipFlex.margin,
       });
     }
@@ -285,7 +296,9 @@ function buildRecheckSummary({ baselineCapture, currentCapture, comparisonQualit
       SUMMARY_CODE.NOT_COMPARABLE
     );
   }
-  if (hasGenerationMismatch(baselineView, currentView)) {
+  // P0-14 §12 — 세대 또는 포즈 프로토콜이 다르면 직접 비교하지 않는다(구형 기준선 ↔ 신규 재확인).
+  if (hasGenerationMismatch(baselineView, currentView)
+      || (baselineView.poseProtocolVersion ?? null) !== (currentView.poseProtocolVersion ?? null)) {
     return notComparable(
       "기준선은 이전 측정 방식으로 기록되어 이번 관절값과 직접 비교하지 않습니다.",
       SUMMARY_CODE.LEGACY_BASELINE
@@ -301,7 +314,8 @@ function buildRecheckSummary({ baselineCapture, currentCapture, comparisonQualit
   if (
     baselineCapture.comparisonQualityStatus === "unreliable" ||
     currentCapture.comparisonQualityStatus === "unreliable" ||
-    reasons.includes("algorithm_version_mismatch")
+    reasons.includes("algorithm_version_mismatch") ||
+    reasons.includes("pose_protocol_mismatch")
   ) {
     return notComparable(
       "기준선과 현재 기록의 측정 조건이 달라 수치를 직접 비교하지 않습니다.",

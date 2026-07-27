@@ -31,7 +31,9 @@ function num(v) {
 }
 
 function contourOf(capture, key) {
-  const fingers = capture?.dipContourObservation?.fingers;
+  // P0-14 — 정면 외곽은 신규 contourObservations.front.fingers를 우선 읽고, 없으면
+  // 호환 필드 dipContourObservation.fingers로 폴백한다(둘은 같은 계산에서 나온 같은 값).
+  const fingers = capture?.contourObservations?.front?.fingers ?? capture?.dipContourObservation?.fingers;
   if (!Array.isArray(fingers)) return null;
   const f = fingers.find((x) => x.key === key);
   if (!f) return null;
@@ -40,6 +42,19 @@ function contourOf(capture, key) {
     contourAsymmetryRatio: num(f.contourAsymmetryRatio),
     radialHalfWidthRatio: num(f.radialHalfWidthRatio),
     ulnarHalfWidthRatio: num(f.ulnarHalfWidthRatio),
+  };
+}
+
+/** P0-14 — 측면(fanLateral) 외곽 프로파일. 관찰되지 않은 손가락은 null(0으로 위장하지 않음). */
+function sideContourOf(capture, key) {
+  const fingers = capture?.contourObservations?.fanLateral?.fingers;
+  if (!Array.isArray(fingers)) return null;
+  const f = fingers.find((x) => x.key === key);
+  if (!f || f.sideProfileObserved !== true) return null;
+  return {
+    dipSideProfileRatio: num(f.dipSideProfileRatio),
+    // 측면 비대칭은 방향 없는 크기만(§6).
+    sideProfileAsymmetryRatio: num(f.sideProfileAsymmetryRatio),
   };
 }
 
@@ -58,6 +73,8 @@ export function toObservationView(capture) {
     handSide: capture.handSide ?? null,
     capturedAt: capture.capturedAt ?? null,
     algorithmVersion: capture.algorithmVersion ?? null,
+    // P0-14 — 포즈 프로토콜 식별자(구형 기록에는 없음 → null). 같은 값끼리만 직접 비교한다(§12).
+    poseProtocolVersion: capture.poseProtocolVersion ?? null,
     symptomSnapshot: capture.symptomSnapshot ?? null,
   };
 
@@ -76,6 +93,7 @@ export function toObservationView(capture) {
         pipDeviationDirection: f.pipDeviationDirection ?? null,
         pipActiveRomDeg: num(f.pipActiveRomDeg),
         contour: contourOf(capture, f.key),
+        sideContour: sideContourOf(capture, f.key),
       })),
       // 이전 세대 리더 호환용으로 함께 저장되는 값. 신규 세대에서는 보조 표시로만 쓴다.
       legacyAverageRomDeg: num(capture.averageObservedRomDeg),
@@ -100,6 +118,7 @@ export function toObservationView(capture) {
       pipDeviationDirection: null,
       pipActiveRomDeg: null,
       contour: null,
+      sideContour: null,
       legacyRomDeg: num(f.romDeg),
     })),
     legacyAverageRomDeg: num(capture.averageObservedRomDeg),
@@ -131,8 +150,23 @@ export function pairFingerObservations(baselineView, currentView) {
   }));
 }
 
-/** 양쪽 모두 외곽 관찰이 있는지 — 한쪽만 있으면 직접 비교하지 않는다(§5). */
+/** 양쪽 모두 정면 외곽 관찰이 있는지 — 한쪽만 있으면 직접 비교하지 않는다(§12). */
 export function hasContourOnBothSides(baselineView, currentView) {
   const anyContour = (view) => (view?.fingers ?? []).some((f) => f.contour);
   return anyContour(baselineView) && anyContour(currentView);
+}
+
+/** 양쪽 모두 측면 외곽 관찰이 있는지 — 한쪽만 있으면 차이를 계산하지 않는다(§12). */
+export function hasSideContourOnBothSides(baselineView, currentView) {
+  const anySide = (view) => (view?.fingers ?? []).some((f) => f.sideContour);
+  return anySide(baselineView) && anySide(currentView);
+}
+
+/**
+ * 두 capture의 포즈 프로토콜이 달라 관절별 수치를 직접 비교할 수 없는지 판정한다(§2·§12).
+ * 구형(포즈 프로토콜 값이 없는) 기준선 ↔ 신규 재확인이면 true → pose_protocol_mismatch.
+ */
+export function hasPoseProtocolMismatch(baselineView, currentView) {
+  if (!baselineView || !currentView) return false;
+  return (baselineView.poseProtocolVersion ?? null) !== (currentView.poseProtocolVersion ?? null);
 }
