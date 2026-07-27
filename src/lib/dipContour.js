@@ -15,7 +15,8 @@
 // 사진·영상·마스크·윤곽 좌표·raw landmark는 만들지도 반환하지도 않는다(§7).
 // ─────────────────────────────────────────────
 
-export const MEASUREMENT_VERSION = "dip-contour-v1";
+// P0-14 — 측면(fanLateral) 외곽 프로파일 관찰을 추가하며 v1 → v2. 정면·측면 모두 이 버전을 쓴다.
+export const MEASUREMENT_VERSION = "dip-contour-v2";
 
 export const CONTOUR_FLAG = {
   LANDMARK_MISSING: "dip_landmark_missing",
@@ -396,6 +397,208 @@ export function buildDipContourPayload(aggregate) {
         validFrames: f.validFrames,
         stabilityMad: f.stabilityMad,
       })),
+    qualityFlags: aggregate.flags,
+  };
+}
+
+// ─────────────────────────────────────────────
+// P0-14 §6 — 측면(ok_fan_lateral) 외곽 프로파일 관찰
+//
+// 정면 관찰(measureFingerDipContour)과 같은 scan-line·normalized-coordinate 계약을 재사용한다.
+// 다른 점은 딱 하나: 측면에서는 카메라 영상만으로 양쪽을 해부학적 dorsal/palmar로 확실히
+// 구분할 수 없으므로(§6), radialSign(엄지쪽 정규화)을 쓰지 않고 방향 없는 sideA/sideB로 낸다.
+// 비대칭은 부호 없는 크기만 기록한다. 이 값은 뼈 두께·부종·염증·관절염의 원인을 판정하지 않는다.
+// ─────────────────────────────────────────────
+
+/**
+ * 한 프레임에서 손가락 하나의 DIP 측면 외곽 프로파일을 관찰한다.
+ * 화면에 그리는 캘리퍼와 숫자 계산에 쓴 중심 단면이 동일해야 하므로(§6),
+ * DIP 중심 주사선이 실패하면 그 프레임은 유효값으로 세지 않는다.
+ */
+export function measureFingerSideProfile(imageData, landmarks, chain) {
+  const w = imageData?.width ?? 0;
+  const h = imageData?.height ?? 0;
+  const norm = (pt) => (pt ? { xNorm: pt.x / w, yNorm: pt.y / h } : null);
+  const fail = (flag, geometry = null) => ({ ok: false, flags: [flag], displayGeometry: geometry });
+
+  if (!w || !h) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
+
+  const pip = px(landmarks, chain.pip, w, h);
+  const dip = px(landmarks, chain.dip, w, h);
+  const tip = px(landmarks, chain.tip, w, h);
+  if (!pip || !dip || !tip) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
+
+  // DIP 국소 접선 = normalize(normalize(DIP-PIP) + normalize(TIP-DIP)) (§6).
+  const unit = (ax, ay) => {
+    const l = Math.hypot(ax, ay);
+    return l > 1e-9 ? { x: ax / l, y: ay / l } : null;
+  };
+  const proximal = unit(dip.x - pip.x, dip.y - pip.y);
+  const distal = unit(tip.x - dip.x, tip.y - dip.y);
+  let tangent = proximal && distal ? unit(proximal.x + distal.x, proximal.y + distal.y) : null;
+  if (!tangent) tangent = unit(tip.x - pip.x, tip.y - pip.y); // 퇴화 시에만 PIP→TIP
+  if (!tangent) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
+
+  const axisLen = Math.hypot(tip.x - pip.x, tip.y - pip.y);
+  if (!(axisLen > 4)) return fail(CONTOUR_FLAG.LANDMARK_MISSING);
+
+  // profileNormal = perpendicular(tangent). 측면에서는 방향(A/B)에 해부학적 의미를 부여하지 않는다.
+  const perp = { x: -tangent.y, y: tangent.x };
+  const radius = Math.max(6, axisLen * SCAN_HALF_SPAN_RATIO);
+
+  const axisHalf = axisLen * 0.18;
+  const baseGeometry = {
+    dipCenter: norm(dip),
+    axisStart: norm({ x: dip.x - tangent.x * axisHalf, y: dip.y - tangent.y * axisHalf }),
+    axisEnd: norm({ x: dip.x + tangent.x * axisHalf, y: dip.y + tangent.y * axisHalf }),
+    sideEdgeA: null,
+    sideEdgeB: null,
+  };
+
+  const along = (from, to, t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+  const stationAt = (t) => ({ x: dip.x + tangent.x * t * axisLen, y: dip.y + tangent.y * t * axisLen });
+  const sideStations = [-0.12, -0.06, 0.06, 0.12].map(stationAt);
+  const bodyStations = [0.35, 0.45, 0.55, 0.65].map((t) => along(pip, dip, t));
+
+  const outOfBounds = [dip, ...sideStations, ...bodyStations].some(
+    (c) => c.x < 0 || c.y < 0 || c.x >= w || c.y >= h
+  );
+  if (outOfBounds) return fail(CONTOUR_FLAG.ROI_OUT_OF_BOUNDS, baseGeometry);
+
+  const bg = estimateBackground(imageData, [dip, ...sideStations, ...bodyStations], perp, radius);
+  if (!bg) return fail(CONTOUR_FLAG.LOW_CONTRAST, baseGeometry);
+
+  const axisSamples = [dip, ...sideStations]
+    .map((c) => sampleRgb(imageData, c.x, c.y))
+    .filter(Boolean)
+    .map((rgb) => rgbDistance(rgb, bg));
+  const contrast = median(axisSamples);
+  if (contrast === null || contrast < MIN_CONTRAST) return fail(CONTOUR_FLAG.LOW_CONTRAST, baseGeometry);
+
+  // 계산에 쓰는 단면 = DIP 중심 주사선 하나(§6). 실패 프레임은 유효로 세지 않는다.
+  const centerRun = scanLine(imageData, dip, perp, radius, bg);
+  if (!centerRun) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  if (centerRun.touchedEdge) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
+
+  // 보조 주사선은 윤곽 일관성·노이즈·겹침·품질 판정에만 쓴다(숫자를 대체하지 않는다).
+  const sideRuns = sideStations.map((c) => scanLine(imageData, c, perp, radius, bg)).filter(Boolean);
+  if (sideRuns.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  const bodyValid = bodyStations.map((c) => scanLine(imageData, c, perp, radius, bg)).filter(Boolean);
+  if (bodyValid.length < 2) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+
+  const sideA = centerRun.radial; // 방향 미상 — 그냥 +perp 쪽
+  const sideB = centerRun.ulnar;  // -perp 쪽
+  const dipSideWidth = sideA + sideB;
+  const bodyWidth = median(bodyValid.map((r) => r.radial + r.ulnar));
+
+  if (!(bodyWidth > 0) || !(dipSideWidth > 0)) return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  if (dipSideWidth >= radius * 2 * OVERLAP_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
+  if (dipSideWidth / bodyWidth > MAX_PLAUSIBLE_WIDTH_RATIO) return fail(CONTOUR_FLAG.FINGER_OVERLAP, baseGeometry);
+  const sideMedian = median(sideRuns.map((r) => r.radial + r.ulnar));
+  if (sideMedian > 0 && Math.abs(dipSideWidth - sideMedian) / sideMedian > 0.6) {
+    return fail(CONTOUR_FLAG.CONTOUR_BROKEN, baseGeometry);
+  }
+
+  return {
+    ok: true,
+    flags: [],
+    sideProfileObserved: true,
+    dipSideProfileRatio: dipSideWidth / bodyWidth,
+    // 양쪽 반폭 — 내부·QA용. 방향에 해부학적 의미를 부여하지 않는다(§6).
+    sideAHalfProfileRatio: sideA / bodyWidth,
+    sideBHalfProfileRatio: sideB / bodyWidth,
+    // 비대칭은 부호 없는 크기만(§6 "unsigned asymmetry").
+    sideProfileAsymmetryRatio: Math.abs(sideA - sideB) / dipSideWidth,
+    displayGeometry: {
+      ...baseGeometry,
+      sideEdgeA: norm({ x: dip.x + perp.x * sideA, y: dip.y + perp.y * sideA }),
+      sideEdgeB: norm({ x: dip.x - perp.x * sideB, y: dip.y - perp.y * sideB }),
+    },
+  };
+}
+
+/** 한 프레임에서 부채꼴 손가락(중지·약지·소지) 측면 프로파일을 관찰한다. 검지는 엄지 접촉으로 가릴 수 있어 필수 아님(§5). */
+export const SIDE_PROFILE_FINGERS = ["middle", "ring", "pinky"];
+
+export function measureFrameSideProfiles(imageData, landmarks) {
+  return SIDE_PROFILE_FINGERS.map((key) => {
+    const chain = DIP_ROI_CHAINS[key];
+    return { key, name: chain.name, ...measureFingerSideProfile(imageData, landmarks, chain) };
+  });
+}
+
+/** 여러 프레임의 측면 관찰을 손가락별 중앙값으로 집계(§5·§6). 실패 손가락은 0을 채우지 않고 ok:false로 남긴다. */
+export function aggregateSideProfileFrames(frameResults) {
+  if (!frameResults?.length) {
+    return { ok: false, flags: [CONTOUR_FLAG.FRAMES_INSUFFICIENT], fingers: [] };
+  }
+  const allFlags = new Set();
+  const fingers = SIDE_PROFILE_FINGERS.map((key) => {
+    const name = DIP_ROI_CHAINS[key].name;
+    const perFrame = frameResults.map((frame) => frame?.find((f) => f.key === key)).filter(Boolean);
+    perFrame.forEach((r) => (r.flags ?? []).forEach((f) => allFlags.add(f)));
+
+    const valid = perFrame.filter((r) => r.ok);
+    if (valid.length < MIN_VALID_FRAMES) {
+      allFlags.add(CONTOUR_FLAG.FRAMES_INSUFFICIENT);
+      return { key, name, ok: false, sideProfileObserved: false, validFrames: valid.length, flags: [CONTOUR_FLAG.FRAMES_INSUFFICIENT] };
+    }
+    const widths = valid.map((r) => r.dipSideProfileRatio);
+    const ratio = median(widths);
+    const mad = medianAbsoluteDeviation(widths);
+    const relativeMad = ratio > 0 ? mad / ratio : Infinity;
+    if (!(relativeMad <= MAX_RELATIVE_MAD)) {
+      allFlags.add(CONTOUR_FLAG.FRAME_VARIATION);
+      return {
+        key, name, ok: false, sideProfileObserved: false, validFrames: valid.length,
+        stabilityMad: round3(mad), relativeVariation: round3(relativeMad), flags: [CONTOUR_FLAG.FRAME_VARIATION],
+      };
+    }
+    return {
+      key, name, ok: true, sideProfileObserved: true,
+      dipSideProfileRatio: round3(ratio),
+      sideAHalfProfileRatio: round3(median(valid.map((r) => r.sideAHalfProfileRatio))),
+      sideBHalfProfileRatio: round3(median(valid.map((r) => r.sideBHalfProfileRatio))),
+      sideProfileAsymmetryRatio: round3(median(valid.map((r) => r.sideProfileAsymmetryRatio))),
+      validFrames: valid.length,
+      stabilityMad: round3(mad),
+      relativeVariation: round3(relativeMad),
+      flags: [],
+    };
+  });
+  const observed = fingers.filter((f) => f.ok);
+  return { ok: observed.length > 0, fingers, flags: [...allFlags], measurementVersion: MEASUREMENT_VERSION };
+}
+
+/**
+ * 측면 관찰 payload를 만든다(§9 fanLateral). 실패 손가락은 값 없이 sideProfileObserved:false로 남긴다(0 저장 금지).
+ * 손가락별 부분 성공을 허용하므로 실패 손가락도 목록에 두되 관찰값은 담지 않는다.
+ */
+export function buildSideProfilePayload(aggregate) {
+  if (!aggregate) return null;
+  return {
+    measurementVersion: MEASUREMENT_VERSION,
+    fingers: aggregate.fingers.map((f) =>
+      f.ok
+        ? {
+            key: f.key,
+            name: f.name,
+            sideProfileObserved: true,
+            dipSideProfileRatio: f.dipSideProfileRatio,
+            sideProfileAsymmetryRatio: f.sideProfileAsymmetryRatio,
+            sideAHalfProfileRatio: f.sideAHalfProfileRatio,
+            sideBHalfProfileRatio: f.sideBHalfProfileRatio,
+            validFrames: f.validFrames,
+            stabilityMad: f.stabilityMad,
+            relativeVariation: f.relativeVariation,
+          }
+        : {
+            key: f.key,
+            name: f.name,
+            sideProfileObserved: false,
+            validFrames: f.validFrames ?? 0,
+          }
+    ),
     qualityFlags: aggregate.flags,
   };
 }

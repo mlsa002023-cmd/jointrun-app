@@ -63,9 +63,9 @@ const COLOR = {
  * @param {number} validFrames       지금까지 모인 유효 프레임 수
  * @param {boolean} hasLandmarks     이번 프레임에 이 손가락 landmark가 있었는지
  */
-export function deriveFingerState({ measurement, validFrames = 0, hasLandmarks = false }) {
+export function deriveFingerState({ measurement, validFrames = 0, hasLandmarks = false, label = "끝마디 외곽" }) {
   if (validFrames >= MIN_VALID_FRAMES) {
-    return { state: CALIPER_STATE.DONE, message: CALIPER_MESSAGE[CALIPER_STATE.DONE], validFrames };
+    return { state: CALIPER_STATE.DONE, message: `${label} 기록 완료`, validFrames };
   }
   if (!hasLandmarks) {
     return { state: CALIPER_STATE.SEARCHING, message: CALIPER_MESSAGE[CALIPER_STATE.SEARCHING], validFrames };
@@ -74,7 +74,7 @@ export function deriveFingerState({ measurement, validFrames = 0, hasLandmarks =
     return {
       state: CALIPER_STATE.MEASURING,
       // §3 C — 진행 상태만 알려주고 실시간 폭 비율 숫자는 일반 사용자에게 보이지 않는다.
-      message: `끝마디 외곽 관찰 중 · ${validFrames}/${MIN_VALID_FRAMES}`,
+      message: `${label} 관찰 중 · ${validFrames}/${MIN_VALID_FRAMES}`,
       validFrames,
     };
   }
@@ -96,16 +96,21 @@ export function deriveFingerState({ measurement, validFrames = 0, hasLandmarks =
  * @param {object} validCounts           { index: 3, middle: 5, ... }
  * @param {boolean} handDetected
  */
-export function deriveOverlayModel(frameMeasurements, validCounts = {}, handDetected = false) {
-  const fingers = Object.entries(DIP_ROI_CHAINS).map(([key, chain]) => {
+export function deriveOverlayModel(frameMeasurements, validCounts = {}, handDetected = false, options = {}) {
+  // P0-14 — 정면은 네 손가락(기본), 측면(fanLateral)은 중지·약지·소지만 순회한다.
+  const fingerKeys = options.fingerKeys ?? Object.keys(DIP_ROI_CHAINS);
+  const label = options.label ?? "끝마디 외곽";
+  const fingers = fingerKeys.map((key) => {
+    const chain = DIP_ROI_CHAINS[key];
     const m = frameMeasurements?.find((f) => f.key === key) ?? null;
     const hasLandmarks = handDetected && Boolean(m?.displayGeometry);
     const derived = deriveFingerState({
       measurement: m,
       validFrames: validCounts[key] ?? 0,
       hasLandmarks,
+      label,
     });
-    return { key, name: chain.name, geometry: m?.displayGeometry ?? null, ...derived };
+    return { key, name: chain?.name ?? key, geometry: m?.displayGeometry ?? null, ...derived };
   });
 
   const doneCount = fingers.filter((f) => f.state === CALIPER_STATE.DONE).length;
@@ -119,7 +124,7 @@ export function deriveOverlayModel(frameMeasurements, validCounts = {}, handDete
   const focus = fingers.find((f) => f.key === focusKey);
   const allDone = doneCount === fingers.length;
   const statusText = allDone
-    ? "끝마디 외곽 기록 완료"
+    ? `${label} 기록 완료`
     : focus?.message ??
       (handDetected
         ? CALIPER_MESSAGE[CALIPER_STATE.LANDMARK_READY]
@@ -151,12 +156,14 @@ export function drawCaliperOverlay(ctx, model, { qaDetail = false, scale = 1, ca
     const raw = f.geometry;
     if (!raw?.dipCenter) return;
     // 정규화 좌표를 이 캔버스 픽셀로 옮긴다. 임의 offset·기기별 보정은 쓰지 않는다.
+    // P0-14 — 정면은 radialEdge/ulnarEdge, 측면(fanLateral)은 sideEdgeA/sideEdgeB를 쓴다.
+    // 계산에 쓴 중심 단면과 같은 좌표라 캘리퍼가 실제 관찰 위치와 일치한다(§6·§8).
     const g = {
       dipCenter: normalizedPointToCanvas(raw.dipCenter, target),
       axisStart: normalizedPointToCanvas(raw.axisStart, target),
       axisEnd: normalizedPointToCanvas(raw.axisEnd, target),
-      radialEdge: normalizedPointToCanvas(raw.radialEdge, target),
-      ulnarEdge: normalizedPointToCanvas(raw.ulnarEdge, target),
+      radialEdge: normalizedPointToCanvas(raw.radialEdge ?? raw.sideEdgeA, target),
+      ulnarEdge: normalizedPointToCanvas(raw.ulnarEdge ?? raw.sideEdgeB, target),
     };
     if (!g.dipCenter) return;
 
