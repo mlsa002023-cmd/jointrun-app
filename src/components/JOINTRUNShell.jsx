@@ -583,7 +583,11 @@ useEffect(() => {
         zIndex:100,
         boxShadow:"0 -2px 12px rgba(0,0,0,0.08)",
       }}>
-        {TAB_CONFIG.map(tab => (
+        {TAB_CONFIG.map(tab => {
+          // 5개 탭을 균일하게 렌더 — 아이콘 크기·정렬을 맞추고, 색은 활성 탭만 강조한다.
+          // (이전에는 기록하기 탭이 raised FAB로 항상 파랗게 보여 "항상 활성"처럼 읽히고 줄이 어긋났다.)
+          const isActive = activeTab === tab.id;
+          return (
           <button key={tab.id} onClick={() => {
               if (tab.externalUrl) {
                 window.open(tab.externalUrl, "_blank", "noopener,noreferrer");
@@ -591,17 +595,13 @@ useEffect(() => {
               }
               setActiveTab(tab.id);
             }}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#2563eb":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
-            {tab.fab ? (
-              <div style={{width:38,height:38,background:"#EEF1F8",border:"1.5px solid #B9C7E1",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(37,99,235,0.25)"}}>
-                <tab.icon style={{width:20,height:20,color:"#2563eb"}} />
-              </div>
-            ) : (
-              <tab.icon style={{width:20,height:20}} />
-            )}
-            <span style={{fontSize:9,marginTop:2,whiteSpace:"nowrap"}}>{tab.label}</span>
+            aria-current={isActive ? "page" : undefined}
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:isActive?"#2563eb":"#94a3b8",fontWeight:isActive?800:500,transition:"color 0.2s"}}>
+            <tab.icon style={{width:22,height:22}} strokeWidth={isActive?2.4:2} />
+            <span style={{fontSize:9,whiteSpace:"nowrap"}}>{tab.label}</span>
           </button>
-        ))}
+          );
+        })}
       </nav>
 
       {/* FEEDBACK TOAST */}
