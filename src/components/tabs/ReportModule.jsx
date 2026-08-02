@@ -50,12 +50,12 @@ function ReportModule({ currentProfile }) {
       {reportUnlocked ? (
         <button
           onClick={() => setShowReport(true)}
-          className="w-full min-h-[48px] flex items-center justify-center px-4 rounded-xl text-[15px] font-extrabold bg-[#122A5C] text-white"
+          className="w-full max-w-[300px] mx-auto min-h-[48px] flex items-center justify-center px-4 rounded-xl text-[15px] font-extrabold bg-[#122A5C] text-white"
         >
           4주 리포트 보기
         </button>
       ) : (
-        <div className="w-full min-h-[48px] flex items-center justify-center px-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-center text-xs leading-relaxed">
+        <div className="w-full max-w-[300px] mx-auto min-h-[48px] flex items-center justify-center px-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-center text-xs leading-relaxed">
           4주 재확인을 완료하면 관찰 기록을 한눈에 볼 수 있어요.
         </div>
       )}
