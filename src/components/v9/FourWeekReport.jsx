@@ -62,8 +62,8 @@ export default function FourWeekReport({ onClose }) {
   if (!detail) {
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#F4F6FA", padding: "24px 20px" }}>
-        <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 12, fontWeight: 700, minHeight: 48 }}>
-          <ArrowLeft style={{ width: 15, height: 15 }} />뒤로
+        <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 14, fontWeight: 700, minHeight: 48 }}>
+          <ArrowLeft style={{ width: 18, height: 18 }} />뒤로
         </button>
         <div style={{ marginTop: 40, textAlign: "center" }}>
           <p style={{ fontSize: 14, color: "#5B6478" }}>아직 기준선이 없어 4주 리포트를 만들 수 없습니다. 첫 기준선을 먼저 만들어주세요.</p>
@@ -75,8 +75,12 @@ export default function FourWeekReport({ onClose }) {
   const baseline = detail.captures?.find((c) => c.type === "baseline");
   const week2 = detail.rechecks?.find((r) => r.dueType === "week2");
   const week4 = detail.rechecks?.find((r) => r.dueType === "week4");
+  const week2Capture = week2?.captureId ? detail.captures?.find((c) => c.id === week2.captureId) : null;
   const week4Capture = week4?.captureId ? detail.captures?.find((c) => c.id === week4.captureId) : null;
-  const latestSymptom = week4Capture?.symptomSnapshot ?? baseline?.symptomSnapshot;
+  // "최근 기록"은 가장 최근 완료된 재확인의 증상을 쓴다: 4주 → 2주 → (없으면) 기준선 순으로 폴백한다.
+  // 4주만 보고 기준선으로 바로 폴백하면, 2주 재확인을 이미 마친 경우에도 리포트가 "기준선=최근(변화 없음)"
+  // 으로 보여 실제 기록과 어긋난다.
+  const latestSymptom = week4Capture?.symptomSnapshot ?? week2Capture?.symptomSnapshot ?? baseline?.symptomSnapshot;
   const decision = detail.decisions?.[0];
   const outcome = detail.outcomes?.[0];
 
@@ -93,10 +97,10 @@ export default function FourWeekReport({ onClose }) {
         }
       `}</style>
       <div className="v9-report-no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 20px 0" }}>
-        <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 12, fontWeight: 700, minHeight: 48 }}>
-          <ArrowLeft style={{ width: 15, height: 15 }} />뒤로
+        <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 14, fontWeight: 700, minHeight: 48 }}>
+          <ArrowLeft style={{ width: 18, height: 18 }} />뒤로
         </button>
-        <button onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 44, padding: "0 16px", background: "#122A5C", color: "white", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700 }}>
+        <button onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 48, padding: "0 18px", background: "#122A5C", color: "white", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700 }}>
           <Printer style={{ width: 14, height: 14 }} />인쇄 / PDF로 저장
         </button>
       </div>
