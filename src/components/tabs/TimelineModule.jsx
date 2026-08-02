@@ -97,7 +97,6 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
   return (
     <div className="space-y-4">
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Decision Loop</p>
         <h2 className="text-sm font-bold text-slate-900">판단 기록 타임라인</h2>
       </div>
       <DecisionLoopTimeline details={details} />
@@ -142,7 +141,6 @@ function TimelineModule({ currentProfile, currentUser, onOpenEventMarker }) {
       {showLegacyScoreCharts && (
       <>
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Recovery Progress</p>
         <h2 className="text-sm font-bold text-slate-900">관절 가동 범위(ROM) & 통증 감소 추이</h2>
       </div>
       {loading ? (

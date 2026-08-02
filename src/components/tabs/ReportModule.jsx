@@ -45,7 +45,6 @@ function ReportModule({ currentProfile }) {
   return (
     <div className="space-y-4">
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Decision Loop</p>
         <h2 className="text-sm font-bold text-slate-900">4주 리포트</h2>
       </div>
       {reportUnlocked ? (
@@ -63,7 +62,6 @@ function ReportModule({ currentProfile }) {
       {showReport && reportUnlocked && <FourWeekReport onClose={() => setShowReport(false)} />}
 
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Observation Metrics</p>
         <h2 className="text-sm font-bold text-slate-900">내 손의 관찰 지표</h2>
       </div>
       <PatternInsightCard scans={scans} />
@@ -94,7 +92,6 @@ function ReportModule({ currentProfile }) {
       )}
 
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">This Month</p>
         <h2 className="text-sm font-bold text-slate-900">이번 달</h2>
       </div>
       {monthly.loading ? (

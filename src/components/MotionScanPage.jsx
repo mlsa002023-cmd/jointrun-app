@@ -828,7 +828,6 @@ export default function MotionScanPage({
         {phase === "idle" && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
             <div className="text-center mb-2">
-              <p className="text-[9px] text-blue-400 uppercase tracking-widest font-mono">Observation</p>
               <h2 className="text-base font-bold text-white">손 관찰 기록{handSide ? ` · ${handSide === "left" ? "왼손" : "오른손"}` : ""}</h2>
               <p className="text-[10px] text-slate-400 leading-normal mt-1">정면·측면·굽힘 3단계로 손을 관찰해 기록합니다.</p>
             </div>
@@ -848,16 +847,16 @@ export default function MotionScanPage({
         {(phase === "camera_error" || phase === "ai_error") && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/95 px-6">
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center max-w-xs">
-              <p className="text-xs font-bold text-amber-700">{phase === "camera_error" ? "카메라 오류" : "AI 모델 오류"}</p>
-              <p className="text-[10px] text-amber-600 mt-1">
-                {import.meta.env.DEV
-                  ? (errorMessage || "문제가 발생하여 시뮬레이션 데이터로 시연합니다.")
-                  : "지금은 측정할 수 없습니다. 잠시 후 다시 시도해주세요."}
+              <p className="text-sm font-bold text-amber-700">{phase === "camera_error" ? "카메라를 켤 수 없어요" : "지금은 준비 중이에요"}</p>
+              <p className="text-[13px] text-amber-700 mt-2 leading-relaxed">
+                {phase === "camera_error"
+                  ? "화면 위 주소창의 카메라 아이콘을 눌러 “허용”으로 바꾼 뒤, 아래 버튼을 눌러 다시 찍어주세요."
+                  : "잠시 후 아래 버튼을 눌러 다시 찍어주세요. 계속 안 되면 앱을 닫았다가 다시 열어주세요."}
               </p>
-              <div className="flex gap-2 justify-center mt-3">
-                <button onClick={restart} className="bg-white border border-amber-300 text-amber-700 font-bold text-xs px-4 py-2 rounded-xl">다시 시도</button>
+              <div className="flex flex-col gap-2 mt-4">
+                <button onClick={restart} className="w-full min-h-[48px] flex items-center justify-center bg-[#122A5C] text-white font-extrabold text-[15px] rounded-xl">다시 찍기</button>
                 {qaAllowed && (
-                  <button onClick={runSimulation} className="bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">시뮬레이션 스캔 실행</button>
+                  <button onClick={runSimulation} className="w-full min-h-[44px] flex items-center justify-center bg-white border border-amber-300 text-amber-700 font-bold text-xs rounded-xl">시뮬레이션 스캔 실행 (QA)</button>
                 )}
               </div>
             </div>

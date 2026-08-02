@@ -27,9 +27,9 @@ export default function OnboardingScreen({ onComplete, onCancel }) {
   const backButton = (onBack) => (
     <button
       onClick={onBack}
-      style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "6px 0", alignSelf: "flex-start", minHeight: 48 }}
+      style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#5B6478", fontSize: 14, fontWeight: 700, cursor: "pointer", padding: "10px 4px", alignSelf: "flex-start", minHeight: 48 }}
     >
-      <ArrowLeft style={{ width: 15, height: 15 }} />뒤로
+      <ArrowLeft style={{ width: 18, height: 18 }} />뒤로
     </button>
   );
 

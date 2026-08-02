@@ -74,8 +74,8 @@ export default function HomeAgendaCard({ agenda, focusSignal = 0, onFocused, chi
         scrollMarginTop: 12,
       }}
     >
-      <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#5B6478" }}>지금 필요한 기록</p>
-      <h2 style={{ margin: "6px 0 0", fontSize: 20, fontWeight: 900, color: "#16213D", lineHeight: 1.35, letterSpacing: "-0.02em" }}>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#5B6478" }}>지금 필요한 기록</p>
+      <h2 style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, color: "#16213D", lineHeight: 1.3, letterSpacing: "-0.02em" }}>
         {agenda.label}
       </h2>
 

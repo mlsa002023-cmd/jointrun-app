@@ -486,7 +486,7 @@ useEffect(() => {
                       <>
                         {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
                         <button onClick={() => setActiveTab("scan")}
-                          style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                          style={{width:"100%",background:"#122A5C",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
                           <Camera style={{width:14,height:14}} />30초 스캔 시작하기
                         </button>
                         <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
@@ -596,7 +596,7 @@ useEffect(() => {
               setActiveTab(tab.id);
             }}
             aria-current={isActive ? "page" : undefined}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:isActive?"#2563eb":"#94a3b8",fontWeight:isActive?800:500,transition:"color 0.2s"}}>
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:isActive?"#122A5C":"#94a3b8",fontWeight:isActive?800:500,transition:"color 0.2s"}}>
             <tab.icon style={{width:22,height:22}} strokeWidth={isActive?2.4:2} />
             <span style={{fontSize:9,whiteSpace:"nowrap"}}>{tab.label}</span>
           </button>
@@ -606,7 +606,7 @@ useEffect(() => {
 
       {/* FEEDBACK TOAST */}
       {feedbackMsg && (
-        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#2563eb",color:"#172554",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(37,99,235,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#122A5C",color:"#ffffff",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(37,99,235,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <Volume2 style={{width:14,height:14}} />{feedbackMsg}
         </div>
       )}

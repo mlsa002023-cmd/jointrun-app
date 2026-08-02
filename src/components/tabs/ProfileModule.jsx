@@ -15,7 +15,6 @@ function ProfileModule({ currentProfile, onEditConcernArea, onOpenCoach, communi
     <div className="space-y-4">
       {showPricing && <PricingScreen onClose={() => setShowPricing(false)} />}
       <JTCard padding="p-4" className="text-center">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Profile</p>
         <h2 className="text-sm font-bold text-slate-900">{currentProfile.name} 님</h2>
       </JTCard>
 
