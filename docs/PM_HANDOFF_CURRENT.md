@@ -137,10 +137,17 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
 - **P1 리포트 최근기록**: 2주 재확인 값을 건너뛰던 폴백을 4주→2주→기준선으로 수정.
 - **사용성 6종**: 구버전 파란색→네이비 통일, 홈 헤드라인 확대, 영문 라벨 제거, 버튼 48px, 촬영 실패 안내 평이화(비교 요약-우선은 기존 구현).
 
-### 코드/Rules 보증(실기기 미검증) — CONDITIONAL 근거
-- Firestore Rules emulator: **Java 미설치로 미실행**. 배포 rules = 이전 47/47 검증본과 byte-identical.
-- 사용자 간 격리·네트워크 오류 원자성: 단일 QA 계정이라 라이브 교차검증은 안 함. Rules(소유권) + `runTransaction`/결정적 ID로 코드 보증.
-- 4주 재확인은 2주 재확인과 동일 메커니즘(2주로 리포트 언락 확인). 개인정보(원본 이미지·영상·랜드마크): Storage 쓰기 0 + `assertNoForbiddenCaptureKeys` fail-closed(56/56).
+### Rules emulator 라이브 검증 (추가 완료)
+- 이식형 OpenJDK(Temurin 21)로 `npm run test:rules` 실행 → **Firestore 에뮬레이터 47/47 통과**.
+- 이로써 다음이 **rules 계층에서 라이브 검증됨**:
+  - **크로스 유저 격리**: "다른 사용자의 v9Event는 읽을 수 없다 / 다른 userId 경로 쓰기 거부" `assertFails` 통과.
+  - **개인정보 금지필드 거부**: rawFrames·landmarks·landmarksRef·displayGeometry·imageData·contourPath·rawLandmarks·photo 등 쓰기 거부 통과.
+  - Event/Capture/Recheck/Comparison/Decision/Outcome 스키마·enum 검증.
+
+### 남은 미검증 항목(로그인+QA 도구 필요) — CONDITIONAL 근거
+- **네트워크 오류 원자성(라이브)**: QA 네트워크 시뮬레이션 + 로그인 필요. 로직은 코드 보증 — `runTransaction`(원자적 커밋/롤백) + 결정적 ID + 상태 게이트, 중복 방지 단위 테스트(`firestoreV9.rc12.test.js`).
+- **4주 재확인(라이브)**: 2주 재확인과 동일 트랜잭션(`completeRecheckWithSymptom`)이며 2주는 실기기 검증됨. 4주 특정 라이브만 미실시.
+- 개인정보(원본 이미지·영상·랜드마크): Storage 쓰기 0 + `assertNoForbiddenCaptureKeys` fail-closed(56/56) + 위 rules 에뮬레이터 거부 검증.
 
 ### staging 최종 상태
 - **QA 모드 OFF** 재배포(allowlist 미포함 → QA 도구 전원 비노출, `evaluateQaAccess` fail-closed). 실 Firebase 연결, SW off, 콘솔 오류 0.
