@@ -7,7 +7,7 @@ import JTCard from "../ui/JTCard";
 import { useReportData } from "../../hooks/useReportData";
 import { useMonthlyReportData } from "../../hooks/useMonthlyReportData";
 import { useV9Repository } from "../../hooks/useV9Repository";
-import { computeObservationTimepoints } from "../../lib/observationTrend";
+import { isReportEventReady } from "../../lib/reportGate";
 import JTSkeleton from "../ui/JTSkeleton";
 import MonthlySummaryCard from "./report/MonthlySummaryCard";
 import MonthlyTrendChart from "./report/MonthlyTrendChart";
@@ -37,7 +37,10 @@ function ReportModule({ currentProfile }) {
     });
     return () => { cancelled = true; };
   }, [repository]);
-  const reportUnlocked = computeObservationTimepoints(details).available;
+  // 리포트 게이트는 대상 루프(FourWeekReport가 보여줄 최신 기준선 이벤트) 안의 비교 가능한
+  // 2시점만 본다 — 서로 다른 루프의 기준선·재확인이 교차 페어링되어 미완료 루프의 빈 리포트가
+  // 열리는 것을 막는다(관찰 추이의 교차 시점 규칙은 그대로 유지).
+  const reportUnlocked = isReportEventReady(details);
 
   return (
     <div className="space-y-4">
