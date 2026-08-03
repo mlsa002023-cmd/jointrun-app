@@ -54,20 +54,43 @@ function SegmentRow({ label, options, value, onChange }) {
   );
 }
 
-export default function SymptomSnapshotForm({ onSubmit, onCancel }) {
+export default function SymptomSnapshotForm({ onSubmit, onCancel, simulateError = false }) {
   const [painSelfReport, setPain] = useState(null);
   const [stiffnessSelfReport, setStiffness] = useState(null);
   const [swellingSelfReport, setSwelling] = useState(null);
   const [warmthSelfReport, setWarmth] = useState(null);
   const [functionDifficulty, setFunctionDifficulty] = useState(null);
   const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
-  const canSubmit = painSelfReport != null && stiffnessSelfReport != null && swellingSelfReport && warmthSelfReport && functionDifficulty;
+  const isValid = painSelfReport != null && stiffnessSelfReport != null && swellingSelfReport && warmthSelfReport && functionDifficulty;
+  const canSubmit = isValid && !submitting;
+
+  // 저장은 반드시 성공을 확인하고 넘어간다 — 실패하면 화면을 넘기지 않고 오류 배너를 띄운다.
+  // (부모 onSubmit이 성공 시 화면을 닫으므로, 성공 경로에서는 이 컴포넌트가 언마운트된다.)
+  // simulateError는 QA 검수에서 실제 네트워크를 끊지 않고 실패 흐름을 확인하기 위한 prop이다.
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (simulateError) throw new Error("QA_SIMULATED_NETWORK_ERROR — 저장 직전 강제 실패(디버그)");
+      await onSubmit({ painSelfReport, stiffnessSelfReport, swellingSelfReport, warmthSelfReport, functionDifficulty, note: note.trim() || null, recordedAt: new Date().toISOString() });
+      // 성공하면 대개 상위가 이 화면을 닫는다(언마운트). 상위가 자체적으로 오류를 처리하고
+      // 화면을 유지하는 경우(예: DecisionLoopFlow)엔 버튼이 "저장 중"에 갇히지 않도록 되돌린다.
+      setSubmitting(false);
+    } catch (e) {
+      console.error("[SymptomSnapshotForm] 저장 실패:", e?.name, e?.code || "");
+      setError("저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.");
+      setSubmitting(false); // 실패 시 다시 시도할 수 있게 활성화(같은 상태라 재시도해도 중복 없음)
+    }
+  };
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc", padding: "24px 20px 32px" }}>
-      <button onClick={onCancel} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#64748b", fontSize: 12, fontWeight: 700, padding: "6px 0", alignSelf: "flex-start", minHeight: 44 }}>
-        <ArrowLeft style={{ width: 15, height: 15 }} />뒤로
+      <button onClick={onCancel} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#64748b", fontSize: 14, fontWeight: 700, padding: "10px 4px", alignSelf: "flex-start", minHeight: 48 }}>
+        <ArrowLeft style={{ width: 18, height: 18 }} />뒤로
       </button>
 
       <div style={{ marginTop: 8, marginBottom: 20 }}>
@@ -109,12 +132,18 @@ export default function SymptomSnapshotForm({ onSubmit, onCancel }) {
         </div>
       </div>
 
+      {error && (
+        <div style={{ marginTop: 20, padding: "12px 14px", background: "#FDF1EE", border: "1px solid #F3C7BB", borderRadius: 12, fontSize: 13, color: "#B3462E", fontWeight: 700, textAlign: "center", lineHeight: 1.5 }}>
+          {error}
+        </div>
+      )}
+
       <button
-        onClick={() => canSubmit && onSubmit({ painSelfReport, stiffnessSelfReport, swellingSelfReport, warmthSelfReport, functionDifficulty, note: note.trim() || null, recordedAt: new Date().toISOString() })}
+        onClick={handleSubmit}
         disabled={!canSubmit}
-        style={{ marginTop: 28, width: "100%", minHeight: 48, background: canSubmit ? "#122A5C" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
+        style={{ marginTop: error ? 12 : 28, width: "100%", minHeight: 48, background: canSubmit ? "#122A5C" : "#cbd5e1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}
       >
-        저장하기
+        {submitting ? "저장 중..." : "저장하기"}
       </button>
     </div>
   );

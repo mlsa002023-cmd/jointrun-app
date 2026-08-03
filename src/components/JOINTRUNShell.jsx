@@ -656,6 +656,7 @@ useEffect(() => {
       {symptomEntry && currentUser && (
         <div style={{ position: "fixed", inset: 0, zIndex: 320, overflowY: "auto", background: "#F4F6FA" }}>
           <SymptomSnapshotForm
+            simulateError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
             onCancel={() => setSymptomEntry(null)}
             onSubmit={async (symptomSnapshot) => {
               await v9Repository.confirmBaselineWithSymptom(symptomEntry.eventId, symptomEntry.captureId, symptomSnapshot);
