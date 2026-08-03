@@ -125,7 +125,7 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
 
 ## 실기기 UAT 최종 (iPhone Safari, staging SHA `a26102b`)
 
-**판정: CONDITIONAL PASS** — 핵심 사용자 흐름 실기기 검증 완료 + 발견 P0 전부 수정·재검증. 일부 항목은 코드/Rules로만 보증(실기기 미검증)이고, Production 배포·main 병합은 대표 결정 대기.
+**판정: RELEASE CANDIDATE** — 핵심 사용자 흐름 + 발견 P0 전부 실기기 검증·재검증 완료. 남아 있던 4개 항목(4주 재확인·네트워크 오류 원자성·크로스 유저 격리·개인정보 금지필드)도 모두 라이브(실기기 또는 Rules emulator)로 닫음. **Production 배포·main 병합만 대표 최종 결정 대기.**
 
 ### 검증된 핵심 흐름 (실기기 스크린샷 증거)
 첫 기준선(왼손) → 앱 종료·재로그인 상태 복원 → 2주 재확인(실제 카메라, 같은 손) → 비교(과거의 나와 비교) → Decision Log(병원 상담) → Outcome → 4주 리포트 언락. 손 일관성(왼손↔왼손), 진단/악화 표현 없음, 관찰형 문구 유지.
@@ -144,10 +144,12 @@ JOINTRUN 앱 현재 상태 인수인계 문서. 교체 가능한 실행 담당�
   - **개인정보 금지필드 거부**: rawFrames·landmarks·landmarksRef·displayGeometry·imageData·contourPath·rawLandmarks·photo 등 쓰기 거부 통과.
   - Event/Capture/Recheck/Comparison/Decision/Outcome 스키마·enum 검증.
 
-### 남은 미검증 항목(로그인+QA 도구 필요) — CONDITIONAL 근거
-- **네트워크 오류 원자성(라이브)**: QA 네트워크 시뮬레이션 + 로그인 필요. 로직은 코드 보증 — `runTransaction`(원자적 커밋/롤백) + 결정적 ID + 상태 게이트, 중복 방지 단위 테스트(`firestoreV9.rc12.test.js`).
-- **4주 재확인(라이브)**: 2주 재확인과 동일 트랜잭션(`completeRecheckWithSymptom`)이며 2주는 실기기 검증됨. 4주 특정 라이브만 미실시.
-- 개인정보(원본 이미지·영상·랜드마크): Storage 쓰기 0 + `assertNoForbiddenCaptureKeys` fail-closed(56/56) + 위 rules 에뮬레이터 거부 검증.
+### 남은 4개 항목 — 전부 라이브 검증 완료
+- **4주 재확인**: 실기기에서 4주 재확인 완료(리포트 "4주 재확인: 완료") + P1 최근기록 폴백(7→10) 확인.
+- **네트워크 오류 원자성**: 실기기에서 시뮬 ON→저장 실패 시 **오류 배너 표시·화면 안 넘어감**(성공 오표시 없음), 시뮬 OFF→재시도 성공, 타임라인 **무중복** 확인.
+  - 이 과정에서 발견·수정한 결함: 증상 저장이 `onSubmit`을 await/catch 없이 호출해 **실패가 조용히 묻히던** 문제 → submitting 가드 + 오류 배너 + 재시도로 fail-safe화(멱등이라 중복 없음). 네트워크 시뮬을 기준선 저장에도 연결.
+- **크로스 유저 격리 + 개인정보 금지필드**: 이식형 JDK로 Firestore Rules emulator **47/47** 실행 — "다른 사용자 문서 read/write 거부", rawFrames·landmarks·displayGeometry 등 금지필드 쓰기 거부 통과.
+- 개인정보(원본 이미지·영상·랜드마크): Storage 쓰기 0 + `assertNoForbiddenCaptureKeys` fail-closed(56/56) + rules 에뮬레이터 거부 검증.
 
 ### staging 최종 상태
 - **QA 모드 OFF** 재배포(allowlist 미포함 → QA 도구 전원 비노출, `evaluateQaAccess` fail-closed). 실 Firebase 연결, SW off, 콘솔 오류 0.
