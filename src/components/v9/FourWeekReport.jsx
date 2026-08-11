@@ -117,7 +117,11 @@ export default function FourWeekReport({ onClose }) {
         </section>
 
         <section style={{ background: "white", border: "1px solid #E1E7EF", borderRadius: 16, padding: 18, marginBottom: 16 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 800, color: "#16213D", margin: "0 0 10px" }}>사용자가 기록한 증상 변화</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: "#16213D", margin: "0 0 8px" }}>사용자가 기록한 증상 변화</h3>
+          <p style={{ fontSize: 12.5, color: "#5B6478", margin: "0 0 12px", lineHeight: 1.6 }}>
+            통증·뻣뻣함은 <b>0(없음)~10(심함)</b>, 붓기·손 사용 불편은 <b>없음 → 심한 쪽</b> 순서입니다.
+            숫자·정도가 <b>높을수록 더 심하게 느꼈다</b>는 뜻이며, 좋아짐·나빠짐은 앱이 판정하지 않습니다.
+          </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 12, fontWeight: 700, color: "#8A93A6", marginBottom: 8 }}>
             <span>항목</span><span style={{ textAlign: "center" }}>기준선</span><span style={{ textAlign: "center" }}>최근 기록</span>
           </div>
