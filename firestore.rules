@@ -4,16 +4,112 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── V9 Decision Loop 스키마 검증 헬퍼 ──
+    // 경로 기반 소유권 검사(request.auth.uid == userId)만으로는 "허용되지 않은 필드/비정상
+    // 데이터"까지는 막지 못한다. RC0 검증 스프린트 요구사항에 따라 필드 타입·enum 값까지 검사한다.
+    function isV9EventShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'primaryTrigger', 'status'])
+        && data.primaryTrigger is string
+        // RC1.2 — symptom_pending 추가(각도 관찰 저장 후 증상 대기).
+        && data.status in ['draft', 'capture_started', 'captured', 'symptom_pending',
+                            'baseline_created', 'recheck_due', 'rechecked', 'compared',
+                            'decision_logged', 'outcome_logged', 'completed', 'capture_failed',
+                            'recheck_skipped', 'comparison_unreliable', 'abandoned', 'deleted']
+        && (!('secondaryTriggers' in data) || data.secondaryTriggers is list)
+        && (!('baselineQualityStatus' in data) || data.baselineQualityStatus == null
+            || data.baselineQualityStatus in ['pass', 'unreliable']);
+    }
+
+    // RC1.2 / P0-14 — 개인정보 최소수집: capture 최상위에 원본·랜드마크·점수·추천·좌표(geometry)
+    // 계열 필드가 오면 쓰기를 거부한다(중첩 구조까지의 재귀 검사는 클라이언트 captureSanitize가
+    // fail-closed로 담당한다 — Firestore Rules는 최상위 키만 검사 가능).
+    function hasNoForbiddenCaptureFields(data) {
+      return !data.keys().hasAny(['rawFrames', 'landmarks', 'scores', 'recommendation',
+                                  'fingerHealthScore', 'painIndex', 'stiffnessMin', 'metrics',
+                                  'photo', 'image', 'video', 'imageData', 'canvas',
+                                  'segmentationMask', 'contourPath', 'displayGeometry',
+                                  'transientGeometry', 'rawLandmarks'])
+        // landmarksRef가 존재한다면 null만 허용(비어있음). 실제 참조 저장은 금지.
+        && (!('landmarksRef' in data) || data.landmarksRef == null);
+    }
+
+    // RC1.2.1 §3/§6 — 품질 의미 분리. 신규 capture는 recordingStatus + comparisonQualityStatus를,
+    // legacy capture는 qualityStatus를 쓴다. 둘 중 하나는 반드시 있어야 하고 각각 enum을 검증한다.
+    function hasValidCaptureQuality(data) {
+      return (
+        // 신규 스키마
+        (('recordingStatus' in data) && data.recordingStatus in ['completed', 'incomplete']
+          && ('comparisonQualityStatus' in data)
+          && data.comparisonQualityStatus in ['unverified', 'pass', 'unreliable'])
+        // legacy 스키마(마이그레이션 없이 계속 허용)
+        || (('qualityStatus' in data) && data.qualityStatus in ['pass', 'retry', 'unreliable'])
+      );
+    }
+
+    function isV9CaptureShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'type'])
+        && data.type in ['baseline', 'recheck', 'observational_angle']
+        && hasValidCaptureQuality(data)
+        && (!('handSide' in data) || data.handSide == null || data.handSide in ['left', 'right'])
+        && (!('qualityFlags' in data) || data.qualityFlags is list)
+        && (!('perFingerObservedRomDeg' in data) || data.perFingerObservedRomDeg is list)
+        // RC1.2.2 P0-8 — 관절별(DIP/PIP) 관찰 기록. 파생 각도 목록만 허용한다.
+        && (!('perFingerJointObservation' in data) || data.perFingerJointObservation is list)
+        && (!('deviationDirection' in data) || data.deviationDirection == null
+            || data.deviationDirection in ['radial', 'ulnar', 'neutral'])
+        // RC1.2.2 P0-9 — DIP 외곽 폭 관찰. 파생 비율만 담긴 map이거나 null이어야 한다.
+        && (!('dipContourObservation' in data) || data.dipContourObservation == null
+            || (data.dipContourObservation is map
+                && data.dipContourObservation.keys().hasOnly(['measurementVersion', 'fingers', 'qualityFlags'])))
+        // P0-14 — 포즈 프로토콜 식별자(문자열)와 정면·측면 분리 관찰(map). front/fanLateral 외의
+        // 키는 허용하지 않는다. 각 관찰은 viewType·recordingStatus·comparisonQualityStatus·fingers를 담는다.
+        && (!('poseProtocolVersion' in data) || data.poseProtocolVersion is string)
+        && (!('contourObservations' in data) || data.contourObservations == null
+            || (data.contourObservations is map
+                && data.contourObservations.keys().hasOnly(['front', 'fanLateral'])))
+        && hasNoForbiddenCaptureFields(data);
+    }
+
+    function isV9RecheckShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'dueType', 'status'])
+        && data.dueType in ['week2', 'week4', 'custom']
+        && data.status in ['scheduled', 'due', 'completed', 'skipped', 'expired'];
+    }
+
+    function isV9ComparisonShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'comparable'])
+        && data.comparable is bool
+        && (!('userPerceivedChange' in data) || data.userPerceivedChange == null
+            || data.userPerceivedChange in ['less_discomfort', 'same', 'more_discomfort', 'unclear']);
+    }
+
+    // RC1 디자인 통합 — Decision Log/Outcome도 v9Events와 동일 원칙(소유권+스키마 검증) 적용.
+    function isV9DecisionShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'decisionType', 'reason'])
+        && data.decisionType in ['hospital_consult', 'exercise_stretch', 'brace_support',
+                                  'rest_or_compress', 'medication_supplement', 'observe_only', 'custom']
+        && data.reason in ['discomfort', 'medical_advice', 'recommendation',
+                           'prior_experience', 'convenience_cost', 'custom'];
+    }
+
+    function isV9OutcomeShape(data) {
+      return data.keys().hasAll(['schemaVersion', 'perceivedChange', 'continuedAction'])
+        && data.perceivedChange in ['less', 'same', 'more', 'unsure']
+        && data.continuedAction in ['continue', 'change', 'stop', 'consult'];
+    }
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
+      // RC1.2.2 P0 — Legacy scan/raw landmark 신규 저장 차단. 기존 문서 read만 유지하고
+      // create/update/delete는 전부 금지한다(향후 landmark 저장은 별도 동의·신규 스키마에서만).
       match /scans/{scanId} {
-        allow read, create: if request.auth != null && request.auth.uid == userId;
-        allow update, delete: if false; // 스캔 기록은 수정/삭제 불가 (데이터 무결성)
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create, update, delete: if false;
 
         match /raw/{rawId} {
-          allow read, create: if request.auth != null && request.auth.uid == userId;
-          allow update, delete: if false;
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create, update, delete: if false;
         }
       }
 
@@ -33,6 +129,65 @@ service cloud.firestore {
 
       match /habit/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // V9 Decision Loop(트리거→기준선→재확인→비교) — 05_DATA_ANALYTICS_SPEC.md.
+      // Event/재확인 상태는 진행에 따라 갱신되어야 하므로 write를 허용하되(스캔/이벤트마커와
+      // 달리 상태 필드가 계속 바뀐다), 본인 문서만 접근 가능하다. 소유권(경로)뿐 아니라
+      // 문서 모양(필드 존재·타입·enum 값)까지 검사해 비정상 데이터 삽입을 막는다.
+      match /v9Events/{eventId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+                        && isV9EventShape(request.resource.data);
+        // RC1.2.1 §6 — baseline_created로의 전환은 symptom_pending에서만 허용한다.
+        // (증상 기록 없이 곧바로 기준선을 확정하는 경로를 서버에서 막는다.)
+        allow update: if request.auth != null && request.auth.uid == userId
+                        && isV9EventShape(request.resource.data)
+                        && (request.resource.data.status != 'baseline_created'
+                            || resource.data.status == 'symptom_pending'
+                            || resource.data.status == 'baseline_created');
+        allow delete: if request.auth != null && request.auth.uid == userId;
+
+        match /captures/{captureId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9CaptureShape(request.resource.data);
+          // RC1.2 — 증상은 각도 관찰 저장 이후 1회만(null→객체) symptomSnapshot 필드에 붙인다.
+          // 그 외 필드 변경·삭제는 여전히 불가(불변 원칙). 금지 필드는 여기서도 차단.
+          allow update: if request.auth != null && request.auth.uid == userId
+                          && resource.data.symptomSnapshot == null
+                          && request.resource.data.symptomSnapshot != null
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['symptomSnapshot'])
+                          && hasNoForbiddenCaptureFields(request.resource.data);
+          allow delete: if false;
+        }
+
+        match /rechecks/{recheckId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create, update: if request.auth != null && request.auth.uid == userId
+                                  && isV9RecheckShape(request.resource.data);
+        }
+
+        match /comparisons/{comparisonId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9ComparisonShape(request.resource.data);
+          allow update, delete: if false;
+        }
+
+        match /decisions/{decisionId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9DecisionShape(request.resource.data);
+          allow update, delete: if false; // 기록 보존 — 스캔/비교와 동일 원칙
+        }
+
+        match /outcomes/{outcomeId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null && request.auth.uid == userId
+                          && isV9OutcomeShape(request.resource.data);
+          allow update, delete: if false;
+        }
       }
     }
   }

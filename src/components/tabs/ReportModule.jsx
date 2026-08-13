@@ -1,8 +1,14 @@
+import { useState, useEffect } from "react";
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
+import { FEATURE_FLAGS } from "../../config/featureFlags";
+import FourWeekReport from "../v9/FourWeekReport";
+import ClinicalSummaryReport from "../v9/ClinicalSummaryReport";
 import PatternInsightCard from "../PatternInsightCard";
 import JTCard from "../ui/JTCard";
 import { useReportData } from "../../hooks/useReportData";
 import { useMonthlyReportData } from "../../hooks/useMonthlyReportData";
+import { useV9Repository } from "../../hooks/useV9Repository";
+import { isReportEventReady } from "../../lib/reportGate";
 import JTSkeleton from "../ui/JTSkeleton";
 import MonthlySummaryCard from "./report/MonthlySummaryCard";
 import MonthlyTrendChart from "./report/MonthlyTrendChart";
@@ -16,40 +22,87 @@ import MonthlyHighlightCard from "./report/MonthlyHighlightCard";
 function ReportModule({ currentProfile }) {
   const { scans } = useReportData();
   const monthly = useMonthlyReportData();
+  const repository = useV9Repository();
   const biomarkers = BIOMARKER_METRICS(currentProfile);
   const statusColors = { good:"bg-blue-50 border-blue-200 text-blue-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
+  const [showReport, setShowReport] = useState(false);
+  const [showClinical, setShowClinical] = useState(false);
+  // 4주 리포트 게이트 — 동일 측정 방식(같은 poseProtocolVersion·handSide)의 기준선+재확인 2시점이
+  // 실제로 있을 때만 리포트를 연다. 그 전에는 패턴·대표 변화 판정을 노출하지 않는다(TimelineModule
+  // 관찰 추이와 동일한 2시점 규칙 재사용). null=로딩 → 활성화하지 않음(성급한 활성 표시 금지).
+  const [details, setDetails] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    repository.getHistoryDetailed(5).then((rows) => {
+      if (!cancelled) setDetails((rows ?? []).filter(Boolean));
+    });
+    return () => { cancelled = true; };
+  }, [repository]);
+  // 리포트 게이트는 대상 루프(FourWeekReport가 보여줄 최신 기준선 이벤트) 안의 비교 가능한
+  // 2시점만 본다 — 서로 다른 루프의 기준선·재확인이 교차 페어링되어 미완료 루프의 빈 리포트가
+  // 열리는 것을 막는다(관찰 추이의 교차 시점 규칙은 그대로 유지).
+  const reportUnlocked = isReportEventReady(details);
 
   return (
     <div className="space-y-4">
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">Digital Biomarkers</p>
-        <h2 className="text-sm font-bold text-slate-900">내 손의 디지털 바이오마커</h2>
+        <h2 className="text-sm font-bold text-slate-900">4주 리포트</h2>
       </div>
-      <PatternInsightCard scans={scans} />
-      <div className="space-y-2">
-        {biomarkers.map(b => (
-          <JTCard key={b.name} className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-slate-900">{b.tradeName}</p>
-              <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
-            </div>
-            <div className="text-right shrink-0">
-              {b.value == null ? (
-                <span className="text-[9px] font-bold text-slate-400 px-2 py-1 rounded-full border border-slate-200 bg-slate-50">측정 전</span>
-              ) : (
-                <>
-                  <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
-                </>
-              )}
-            </div>
-          </JTCard>
-        ))}
-      </div>
+      {reportUnlocked ? (
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={() => setShowReport(true)}
+            className="w-full max-w-[300px] min-h-[48px] flex items-center justify-center px-4 rounded-xl text-[15px] font-extrabold bg-[#122A5C] text-white"
+          >
+            4주 리포트 보기
+          </button>
+          <button
+            onClick={() => setShowClinical(true)}
+            className="w-full max-w-[300px] min-h-[44px] flex items-center justify-center px-4 rounded-xl text-[13px] font-bold bg-white border border-[#122A5C] text-[#122A5C]"
+          >
+            병원 제출용 보고서 (인쇄)
+          </button>
+        </div>
+      ) : (
+        <div className="w-full max-w-[300px] mx-auto min-h-[48px] flex items-center justify-center px-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-center text-xs leading-relaxed">
+          4주 재확인을 완료하면 관찰 기록을 한눈에 볼 수 있어요.
+        </div>
+      )}
+      {showReport && reportUnlocked && <FourWeekReport onClose={() => setShowReport(false)} />}
+      {showClinical && reportUnlocked && <ClinicalSummaryReport onClose={() => setShowClinical(false)} />}
 
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
-        <p className="text-[9px] text-slate-400 uppercase font-mono">This Month</p>
+        <h2 className="text-sm font-bold text-slate-900">내 손의 관찰 지표</h2>
+      </div>
+      <PatternInsightCard scans={scans} />
+      {/* V9 정렬(JR-WEB-202/08_QA_ACCEPTANCE_GATE.md Gate B) — 절대 점수(Finger Score/Pain
+          Trend) 카드는 absoluteScoreUiEnabled 플래그 뒤로 숨긴다. 계산 로직·데이터는 그대로
+          유지되며, 플래그를 true로 되돌리면 즉시 복원된다(가역성). */}
+      {FEATURE_FLAGS.absoluteScoreUiEnabled && (
+        <div className="space-y-2">
+          {biomarkers.map(b => (
+            <JTCard key={b.name} className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold text-slate-900">{b.tradeName}</p>
+                <p className="text-[8px] text-slate-400 leading-relaxed line-clamp-2">{b.description}</p>
+              </div>
+              <div className="text-right shrink-0">
+                {b.value == null ? (
+                  <span className="text-[9px] font-bold text-slate-400 px-2 py-1 rounded-full border border-slate-200 bg-slate-50">측정 전</span>
+                ) : (
+                  <>
+                    <div className="text-base font-black text-slate-900 font-mono">{b.value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{b.unit}</span></div>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${statusColors[b.status]}`}>{statusLabels[b.status]}</span>
+                  </>
+                )}
+              </div>
+            </JTCard>
+          ))}
+        </div>
+      )}
+
+      <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
         <h2 className="text-sm font-bold text-slate-900">이번 달</h2>
       </div>
       {monthly.loading ? (
@@ -57,7 +110,7 @@ function ReportModule({ currentProfile }) {
       ) : (
         <>
           <MonthlySummaryCard summary={monthly.summary} />
-          <MonthlyTrendChart trend={monthly.trend} />
+          {FEATURE_FLAGS.absoluteScoreUiEnabled && <MonthlyTrendChart trend={monthly.trend} />}
           <MonthlyEventSummary eventGroups={monthly.eventGroups} />
           <MonthlyHighlightCard highlight={monthly.highlight} />
         </>

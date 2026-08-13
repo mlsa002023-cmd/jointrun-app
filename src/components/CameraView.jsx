@@ -155,7 +155,11 @@ try {
           background: "#000",
         }}
       />
-      {/* canvas에는 랜드마크만 그린다 — 카메라 영상을 canvas로 다시 그리지 않는다. */}
+      {/* canvas에는 랜드마크만 그린다 — 카메라 영상을 canvas로 다시 그리지 않는다.
+          RC1.2.2 P0-11 — objectFit을 video와 똑같이 cover로 맞춘다. canvas 비트맵은 video
+          원본 해상도로 잡히므로(drawSkeleton에서 videoWidth/Height로 설정), 두 요소가 같은
+          방식으로 배치되어야 오버레이가 영상 위 실제 위치와 일치한다. 예전에는 canvas만
+          cover가 없어 영상 종횡비와 화면 박스 종횡비가 다를 때 오버레이가 어긋났다. */}
       <canvas
         ref={canvasRef}
         style={{
@@ -163,6 +167,7 @@ try {
           inset: 0,
           width: "100%",
           height: "100%",
+          objectFit: "cover",
           transform: isMirrored ? "scaleX(-1)" : "none",
           pointerEvents: "none",
           opacity: visible ? 1 : 0,

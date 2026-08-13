@@ -12,9 +12,12 @@ const CACHE_VERSION = "__CACHE_VERSION__";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
+// RC1.2.2 P0 — "/"·"/index.html"은 더 이상 앱 셸로 미리 캐싱하지 않는다. 배포마다
+// JS 번들 해시가 바뀌는데, 이전 배포 시점의 index.html이 캐시에 남아있으면 그 안의
+// 옛 해시 스크립트 경로가 새 배포 서버에는 없어 "Failed to fetch dynamically imported
+// module" 백색 화면으로 이어진다(§fetch 네비게이션 핸들러 참고). 이 앱은 로그인 등에
+// 어차피 네트워크가 필수라 오프라인 shell 폴백의 실익도 없다.
 const APP_SHELL_URLS = [
-  "/",
-  "/index.html",
   "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -61,11 +64,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 페이지 네비게이션: 네트워크 우선, 실패 시 캐시된 index.html
+  // RC1.2.2 P0 — 페이지 네비게이션은 항상 네트워크에서 받는다. 캐시된 index.html로
+  // 폴백하지 않는다(위 APP_SHELL_URLS 주석 참고 — 옛 배포의 해시 스크립트 경로를
+  // 가리키는 index.html을 서빙하면 새 배포 서버에서 그 파일을 못 찾아 백색 화면이 된다).
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(() => caches.match("/index.html"))
-    );
+    event.respondWith(fetch(request));
     return;
   }
 

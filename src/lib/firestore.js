@@ -1,4 +1,4 @@
-import { FIREBASE_ENABLED, db } from "../firebase/config";
+import { FIREBASE_ENABLED, db, isFirestoreReady } from "../firebase/config";
 import {
   collection, addDoc, getDocs, query, orderBy, limit,
   doc, setDoc, getDoc, serverTimestamp,
@@ -15,7 +15,7 @@ export const SCHEMA_VERSION = "v1.0";
  *   users/{uid}/scans/{scanId}/raw/frames — 포즈별 원본 landmark 프레임 (getScanHistory는 여기를 안 건드림)
  */
 export async function saveScanRecord(uid, { metrics, scores, rawFrames, recommendation }) {
-  if (!FIREBASE_ENABLED || !db) {
+  if (!FIREBASE_ENABLED || !isFirestoreReady()) {
     console.warn("⚠️ 데모 모드 - 저장되지 않음 (saveScanRecord)");
     return null;
   }
@@ -37,13 +37,15 @@ export async function saveScanRecord(uid, { metrics, scores, rawFrames, recommen
     }
     return ref.id;
   } catch (e) {
+    // 실제 저장 실패는 삼키지 않고 호출부로 전파한다 — 완료 화면의 "다음 단계로" 저장
+    // 게이트가 성공/실패를 구분해야 하기 때문(P0 UX: 저장 성공 전 홈 이동 불가).
     console.warn("saveScanRecord 실패:", e);
-    return null;
+    throw e;
   }
 }
 
 export async function getScanHistory(uid, count = 14) {
-  if (!uid || !FIREBASE_ENABLED || !db) return [];
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return [];
   try {
     const q = query(
       collection(db, "users", uid, "scans"),
@@ -59,7 +61,7 @@ export async function getScanHistory(uid, count = 14) {
 }
 
 export async function saveCheckIn(uid, data) {
-  if (!uid || !FIREBASE_ENABLED || !db) return null;
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return null;
   try {
     const ref = await addDoc(collection(db, "users", uid, "checkins"), {
       ...data, createdAt: serverTimestamp(),
@@ -73,7 +75,7 @@ export async function saveCheckIn(uid, data) {
 
 /** 붓기/피로도 필드를 담고 있는 가장 최근 체크인을 찾는다 (회복 미션 체크인은 이 필드가 없어 걸러진다). */
 export async function getLatestConditionCheckIn(uid) {
-  if (!uid || !FIREBASE_ENABLED || !db) return null;
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return null;
   try {
     const q = query(
       collection(db, "users", uid, "checkins"),
@@ -97,7 +99,7 @@ export async function getLatestConditionCheckIn(uid) {
  * 최근 30개 날짜 키만 유지 — Streak/Consistency 계산에 그 이상은 필요 없다.
  */
 export async function recordHabitActivity(uid, dateKey) {
-  if (!uid || !FIREBASE_ENABLED || !db) return;
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return;
   try {
     const ref = doc(db, "users", uid, "habit", "current");
     const snap = await getDoc(ref);
@@ -111,7 +113,7 @@ export async function recordHabitActivity(uid, dateKey) {
 }
 
 export async function getHabitActivity(uid) {
-  if (!uid || !FIREBASE_ENABLED || !db) return [];
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return [];
   try {
     const snap = await getDoc(doc(db, "users", uid, "habit", "current"));
     return snap.exists() ? (snap.data().activeDays ?? []) : [];
@@ -145,7 +147,7 @@ export async function saveEvent(uid, { type, label, memo, timestamp }) {
     timestamp: (timestamp instanceof Date ? timestamp : new Date()).toISOString(),
     schemaVersion: EVENT_SCHEMA_VERSION,
   };
-  if (!FIREBASE_ENABLED || !db || (typeof navigator !== "undefined" && !navigator.onLine)) {
+  if (!FIREBASE_ENABLED || !isFirestoreReady() || (typeof navigator !== "undefined" && !navigator.onLine)) {
     queueOfflineEvent(uid, record);
     return null;
   }
@@ -163,7 +165,7 @@ export async function saveEvent(uid, { type, label, memo, timestamp }) {
 
 /** 재연결 시(온라인 이벤트, 앱 재진입 등) 큐에 쌓인 이벤트를 순서대로 재전송한다. */
 export async function flushPendingEvents() {
-  if (!FIREBASE_ENABLED || !db || (typeof navigator !== "undefined" && !navigator.onLine)) return;
+  if (!FIREBASE_ENABLED || !isFirestoreReady() || (typeof navigator !== "undefined" && !navigator.onLine)) return;
   const queueItems = loadEventQueue();
   if (!queueItems.length) return;
   const stillPending = [];
@@ -182,7 +184,7 @@ export async function flushPendingEvents() {
 }
 
 export async function getEventHistory(uid, count = 30) {
-  if (!uid || !FIREBASE_ENABLED || !db) return [];
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return [];
   try {
     const q = query(
       collection(db, "users", uid, "events"),
@@ -198,7 +200,7 @@ export async function getEventHistory(uid, count = 30) {
 }
 
 export async function saveProfileSnapshot(uid, profile) {
-  if (!uid || !FIREBASE_ENABLED || !db) return;
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return;
   try {
     await setDoc(
       doc(db, "users", uid, "profile", "current"),
@@ -211,7 +213,7 @@ export async function saveProfileSnapshot(uid, profile) {
 }
 
 export async function getProfileSnapshot(uid) {
-  if (!uid || !FIREBASE_ENABLED || !db) return null;
+  if (!uid || !FIREBASE_ENABLED || !isFirestoreReady()) return null;
   try {
     const snap = await getDoc(doc(db, "users", uid, "profile", "current"));
     return snap.exists() ? snap.data() : null;

@@ -1,27 +1,33 @@
-// 브랜드 팔레트(작업지시서 §0: UI = Blue #2563EB + Cyan 강조, Health = Green) +
-// 이미 화면에서 쓰이고 있는 상태 색(good/stable/warning/danger, ReportModule 기준).
-// JOINTRUNShell.jsx의 인라인 style에서는 이 상수를, 그 외 컴포넌트는 tailwind.config.js의
-// 동일한 값을 참조하는 유틸리티 클래스(bg-brand 등)를 쓴다 — 값의 출처는 하나다.
+// Claude Design 토큰(RC1 디자인 통합, src/design/tokens/tokens.json)을 그대로 반영한다.
+// 값의 출처는 tokens.json 하나 — 여기서는 화면에서 쓰기 편한 이름으로만 재노출한다.
+// brand/brandCyan(구 blue-600/cyan-500)은 호출부 호환을 위해 남기고 navy/teal 값을 담는다.
+import tokens from "./tokens.json";
+
 export const color = {
-  brand: "#2563EB",
-  brandCyan: "#06B6D4",
-  health: "#16A34A",
+  brand: tokens.color.navy, // #122A5C — 기존 brand(#2563EB) 대체
+  brandCyan: tokens.color.teal, // #1F9E96 — 기존 brandCyan(#06B6D4) 대체
+  health: tokens.color.teal,
+
+  navy: tokens.color.navy,
+  navy2: tokens.color.navy2,
+  teal: tokens.color.teal,
+  tealLight: tokens.color.tealLight,
 
   status: {
-    good: { bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8" },
+    good: { bg: "#EAF6F5", border: "#BFE7E3", text: tokens.color.teal },
     stable: { bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-    warning: { bg: "#FFF7ED", border: "#FED7AA", text: "#C2410C" },
-    danger: { bg: "#FEF2F2", border: "#FECACA", text: "#B91C1C" },
+    warning: { bg: "#FDF1EE", border: "#F3C7BB", text: tokens.color.warn },
+    danger: { bg: "#FDF1EE", border: "#F3C7BB", text: tokens.color.warn },
   },
 
-  surface: "#FFFFFF",
-  surfaceMuted: "#F8FAFC",
-  border: "#E2E8F0",
+  surface: tokens.color.surface,
+  surfaceMuted: tokens.color.bg,
+  border: tokens.color.line,
 
   text: {
-    primary: "#0F172A",
-    secondary: "#334155",
-    muted: "#64748B",
-    faint: "#94A3B8",
+    primary: tokens.color.ink,
+    secondary: tokens.color.sub,
+    muted: tokens.color.sub,
+    faint: "#8A93A6",
   },
 };

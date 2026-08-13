@@ -13,6 +13,15 @@ import {
 } from "../lib/firestore";
 import { trackKpiEvent } from "../lib/analytics";
 import { useHomeData } from "../hooks/useHomeData";
+import { useV9Agenda } from "../hooks/useV9Agenda";
+import { formatDateValue } from "../lib/dateValue";
+import { useV9Repository } from "../hooks/useV9Repository";
+import { shouldShowQaTools, FEATURE_FLAGS } from "../config/featureFlags";
+import DecisionLoopFlow from "./v9/DecisionLoopFlow";
+import HomeAgendaCard from "./v9/HomeAgendaCard";
+import AngleObservationFlow from "./v9/AngleObservationFlow";
+import SymptomSnapshotForm from "./v9/SymptomSnapshotForm";
+import { V9_ANALYTICS_EVENTS } from "../lib/v9EventTypes";
 import EventMarkerModal from "./EventMarkerModal";
 import {
   computeInflammationScore, computeFatigueComponent, computeRecoveryScore, computeFingerHealthScore,
@@ -77,6 +86,19 @@ const [condition, setCondition] = useState({ swellingLevel: null, fatigueLevel: 
 // scanCount는 SCAN 탭(홈이 마운트되어 있지 않을 수 있는 시점)의 KPI 판정에도 쓰이므로,
 // 이 훅을 최상위(JOINTRUNShell)에서 호출해 탭 전환과 무관하게 유지한다.
 const { scans: recentScans, scanCount, mobilityTrendUp, addOptimisticScan } = useHomeData();
+// V9 Decision Loop(트리거→기준선→재확인→비교) 진행 상태 — 04_APP_PRD_V9.md S07 홈 상단 카드.
+const { activeEvent, agenda, refresh: refreshAgenda } = useV9Agenda();
+const v9Repository = useV9Repository();
+const [decisionLoop, setDecisionLoop] = useState(null); // { mode: "recheck"|"decision", recheck? } | null
+// RC1.2 — V10 첫 기준선 각도 관찰 흐름 오버레이 + symptom_pending 증상 기록 오버레이.
+const [baselineFlow, setBaselineFlow] = useState(false);
+const [symptomEntry, setSymptomEntry] = useState(null); // { eventId, captureId } | null
+const [qaSimulateNetworkError, setQaSimulateNetworkError] = useState(false);
+const [qaResetting, setQaResetting] = useState(false);
+// QA 계정도 기본은 Mock Capture(빠른 시나리오 검증)지만, 실기기에서는 이 토글을 꺼서
+// 실제 카메라 경로를 같은 계정으로 검수할 수 있어야 한다("Mock Capture와 실제 카메라를
+// 명확히 구분" 요건) — 보안 게이트가 아니라 QA 사용자 편의를 위한 선택지일 뿐이다.
+const [qaUseMockCapture, setQaUseMockCapture] = useState(true);
 // Habit Score(Consistency/Streak) 산출용 활동일(YYYY-MM-DD) 목록 — Finger Health Score와 별개 체계.
 const [activeDayKeys, setActiveDayKeys] = useState([]);
 const habitScore = computeHabitScore(activeDayKeys);
@@ -166,6 +188,8 @@ useEffect(() => {
   }, [currentUser?.uid]);
 
   const [activeTab, setActiveTab] = useState("home");
+  // 측정 완료 화면의 "다음 단계로" → 홈 이동 후 agenda 카드를 scroll·focus·강조하기 위한 신호(nonce).
+  const [agendaFocusSignal, setAgendaFocusSignal] = useState(0);
   const [showEventMarker, setShowEventMarker] = useState(false);
   const [recoverySteps, setRecoverySteps] = useState(DEFAULT_STEPS);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
@@ -181,7 +205,20 @@ useEffect(() => {
     setTimeout(() => setFeedbackMsg(null), 2500);
   }, []);
 
-  const handleScanCompleted = (payload) => {
+  // 측정 완료 화면의 "다음 단계로" 동작. 다음 작업을 하드코딩하지 않는다 — 홈으로 이동하고
+  // agenda 상태를 다시 계산한 뒤, 홈 최상단 "지금 필요한 기록" 카드를 scroll·focus·강조만 한다.
+  // 어떤 작업으로 이어질지는 전적으로 agenda state(recheckSchedule.js)가 결정한다.
+  const goToNextAction = useCallback(async () => {
+    setActiveTab("home");
+    await refreshAgenda();
+    // 홈 콘텐츠가 마운트/갱신된 다음 프레임에 카드가 자기 자신을 scroll·focus하도록 신호를 올린다.
+    setAgendaFocusSignal((n) => n + 1);
+  }, [refreshAgenda]);
+
+  // async — 실제 스캔 저장의 성공을 await로 확인해 Promise를 반환한다. MotionScanPage의
+  // "다음 단계로" 버튼은 이 Promise가 resolve된 뒤에만 활성화된다(P0 UX 게이트).
+  // 저장이 실패하면 throw가 그대로 전파되어 완료 화면이 오류 상태로 남고 홈 이동을 막는다.
+  const handleScanCompleted = async (payload) => {
     const { metrics, scanScores, raw, recommendation, isSimulated } = payload;
     // Mobility/Stability는 이번 스캔의 실측값, Inflammation/Recovery는 가장 최근 컨디션 체크인 값과 결합한다.
     setLastScanScores(scanScores);
@@ -204,8 +241,12 @@ useEffect(() => {
     addOptimisticScan(healthScore);
     setRecoverySteps(s => s.map(step => step.id === 2 ? { ...step, isCompleted: true } : step));
     // 시뮬레이션 결과는 어떤 경우에도 Firebase에 저장하지 않는다(P0 안전 요건 — 실제 기록과 섞임 방지).
+    // 데모 모드(Firebase 미설정)에서는 saveScanRecord가 즉시 null을 반환하며 throw하지 않으므로
+    // 저장 게이트는 자연히 "성공"으로 통과한다(로컬 흐름 검증용).
     if (currentUser && !isSimulated) {
-      saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation }).catch(err => console.error("스캔 기록 저장 실패:", err));
+      // 스캔 기록 저장은 실패 시 throw되어 완료 화면 게이트가 오류를 잡는다(await).
+      await saveScanRecord(currentUser.uid, { metrics, scores: healthScore, rawFrames: raw, recommendation });
+      // 프로필 스냅샷은 부가 정보라 저장 게이트를 막지 않는다(실패해도 비블로킹).
       saveProfileSnapshot(currentUser.uid, {
         fingerHealthScore: updated.fingerHealthScore,
         painIndex: updated.painIndex,
@@ -258,7 +299,7 @@ useEffect(() => {
   // 기존 AI코치·커뮤니티 탭은 없애지 않고 PROFILE 화면 안의 진입점으로 재배치했다(기능 자체는 유지).
   const TAB_CONFIG = [
     { id: "home", icon: Compass, label: "홈" },
-    { id: "scan", icon: Camera, label: "모션스캔", fab: true },
+    { id: "scan", icon: Camera, label: "기록하기", fab: true },
     { id: "timeline", icon: TrendingUp, label: "타임라인" },
     { id: "report", icon: Activity, label: "리포트" },
     { id: "profile", icon: User, label: "프로필" },
@@ -318,40 +359,198 @@ useEffect(() => {
 
             {/* App content */}
               {activeTab === "home" && (
-                scanCount === null ? (
-                  <HomeSkeleton />
-                ) : scanCount === 0 ? (
-                  <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
-                ) : (
-                <div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                    <div>
-                      <div style={{fontSize:11,color:"#94a3b8"}}>환영합니다!</div>
-                      <div style={{fontSize:16,fontWeight:900,color:"#0f172a"}}>{currentProfile.name} 님</div>
+                <>
+                {agenda && (
+                  <HomeAgendaCard
+                    agenda={agenda}
+                    focusSignal={agendaFocusSignal}
+                    onFocused={() => trackKpiEvent("home_next_action_viewed", currentUser?.uid, { agendaKey: agenda.key })}
+                  >
+                    {agenda.key === "no_baseline" && (
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setBaselineFlow(true); }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        첫 기준선 만들기
+                      </button>
+                    )}
+                    {agenda.key === "symptom_pending" && (
+                      <button onClick={() => {
+                          trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_ENTRY_STARTED, currentUser?.uid, { eventId: agenda.eventId });
+                          trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key });
+                          setSymptomEntry({ eventId: agenda.eventId, captureId: agenda.baselineCaptureId });
+                        }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        증상·상황 기록하기
+                      </button>
+                    )}
+                    {agenda.key === "recheck_ready" && (
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "recheck", recheck: agenda.recheck }); }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        지금 재확인하기
+                      </button>
+                    )}
+                    {agenda.key === "awaiting_decision" && (
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setDecisionLoop({ mode: "decision" }); }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        결과 기록하기
+                      </button>
+                    )}
+                    {/* FIX-1 §1 — 재확인 대기(2주/4주)에도 실행 가능한 CTA를 항상 둔다. '오늘 상태 메모하기'는
+                        EventMarker(증상·상황 메모)를 재사용하며 새 카메라 측정을 만들지 않는다. 예정일·D-day는
+                        HomeAgendaCard의 label·진행 슬라이더로 이미 표시된다. */}
+                    {(agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && (
+                      <>
+                        <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setShowEventMarker(true); }}
+                          style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                          오늘 상태 메모하기
+                        </button>
+                        <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key, secondary: "timeline" }); setActiveTab("timeline"); }}
+                          style={{marginTop:10,width:"100%",minHeight:44,background:"white",color:"#122A5C",border:"1px solid #E1E7EF",borderRadius:12,fontSize:14,fontWeight:800}}>
+                          타임라인 보기
+                        </button>
+                      </>
+                    )}
+                    {agenda.key === "loop_completed" && (
+                      <button onClick={() => { trackKpiEvent("home_next_action_clicked", currentUser?.uid, { agendaKey: agenda.key }); setBaselineFlow(true); }}
+                        style={{marginTop:16,width:"100%",minHeight:48,background:"#122A5C",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+                        새 판단 기록 시작하기
+                      </button>
+                    )}
+                    {/* shouldShowQaTools()가 false면(production 항상 false) 아무것도 렌더링되지 않는다.
+                        2주/4주를 실제로 기다리지 않고 재확인 화면까지 E2E로 검증하기 위한 QA 전용 버튼. */}
+                    {shouldShowQaTools(currentUser) && (agenda.key === "week2_waiting" || agenda.key === "week4_waiting") && agenda.recheck && (
+                      <button
+                        onClick={async () => {
+                          await v9Repository.debugForceRecheckDue(activeEvent.id, agenda.recheck.dueType);
+                          refreshAgenda();
+                        }}
+                        style={{marginTop:12,width:"100%",minHeight:40,background:"rgba(250,204,21,0.12)",border:"1px solid rgba(202,138,4,0.4)",color:"#854d0e",borderRadius:10,fontSize:11.5,fontWeight:700}}>
+                        MOCK: 재확인 날짜를 오늘로 당기기 (QA 전용)
+                      </button>
+                    )}
+                  </HomeAgendaCard>
+                )}
+                {/* QA 모드 패널 — 대표 검수용 Preview에서만 노출된다(shouldShowQaTools). 일반 사용자
+                    경로에는 이 블록 자체가 절대 렌더링되지 않는다. */}
+                {shouldShowQaTools(currentUser) && (
+                  <div style={{background:"rgba(250,204,21,0.08)",border:"1px solid rgba(202,138,4,0.35)",borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+                    <div style={{fontSize:10,color:"#854d0e",fontWeight:800,letterSpacing:0.5,marginBottom:8}}>QA 모드 — 검수 전용 도구</div>
+                    <button
+                      onClick={() => setQaUseMockCapture((v) => !v)}
+                      style={{width:"100%",minHeight:40,background:"white",color:"#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700,marginBottom:8}}>
+                      촬영 방식: {qaUseMockCapture ? "Mock Capture (카메라 없이 진행)" : "실제 카메라 (실기기 검수용)"}
+                    </button>
+                    <button
+                      onClick={() => setQaSimulateNetworkError((v) => !v)}
+                      style={{width:"100%",minHeight:40,background:qaSimulateNetworkError ? "#B3462E" : "white",color:qaSimulateNetworkError ? "white" : "#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700,marginBottom:8}}>
+                      네트워크 오류 시뮬레이션: {qaSimulateNetworkError ? "켜짐 (다음 저장이 강제로 실패합니다)" : "꺼짐"}
+                    </button>
+                    <button
+                      disabled={qaResetting}
+                      onClick={async () => {
+                        if (!window.confirm("현재 계정의 판단 루프 테스트 기록을 전부 초기화할까요? 되돌릴 수 없습니다.")) return;
+                        setQaResetting(true);
+                        try {
+                          await v9Repository.resetTestData();
+                          setDecisionLoop(null);
+                          await refreshAgenda();
+                        } finally {
+                          setQaResetting(false);
+                        }
+                      }}
+                      style={{width:"100%",minHeight:40,background:"white",color:"#854d0e",border:"1px solid rgba(202,138,4,0.4)",borderRadius:8,fontSize:11,fontWeight:700}}>
+                      {qaResetting ? "초기화 중..." : "테스트 기록 초기화"}
+                    </button>
+                  </div>
+                )}
+                {/* RC1.2.1 §5 — production 기본(absoluteScoreUiEnabled=false)에서는 레거시 Home 요소
+                    (연속 사용 일수, 30초 스캔, 체크인·회복 미션, 점수 중심 Home)를 렌더링하지 않는다.
+                    일반 사용자는 위의 agenda 기반 V10 Home 카드만 사용한다. 기존 데이터는 삭제하지 않고
+                    아래 레거시 블록(내부 flag)에서만 읽는다. */}
+                {FEATURE_FLAGS.absoluteScoreUiEnabled && (
+                  scanCount === null ? (
+                    <HomeSkeleton />
+                  ) : scanCount === 0 ? (
+                    <EmptyHomeState currentProfile={currentProfile} setActiveTab={setActiveTab} />
+                  ) : (
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                      <div>
+                        <div style={{fontSize:11,color:"#94a3b8"}}>환영합니다!</div>
+                        <div style={{fontSize:16,fontWeight:900,color:"#0f172a"}}>{currentProfile.name} 님</div>
+                      </div>
+                      <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#ea580c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
+                        <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
+                      </div>
                     </div>
-                    <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#ea580c",padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:800}}>
-                      <Zap style={{width:12,height:12,fill:"#ea580c"}} />{habitScore.streak.days}일 연속
+                    {scanCount === 1 ? (
+                      <>
+                        {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
+                        <button onClick={() => setActiveTab("scan")}
+                          style={{width:"100%",background:"#122A5C",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
+                          <Camera style={{width:14,height:14}} />30초 스캔 시작하기
+                        </button>
+                        <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                        <div style={{marginTop:12}}>
+                          <RecentTimelinePreview setActiveTab={setActiveTab} />
+                        </div>
+                      </>
+                    ) : (
+                      <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
+                    )}
+                  </div>
+                  )
+                )}
+                </>
+              )}
+              {activeTab === "scan" && (
+                FEATURE_FLAGS.absoluteScoreUiEnabled ? (
+                  // 레거시(내부 flag): 점수 기반 독립 스캔. production 기본에는 이 경로가 없다.
+                  <MotionScanPage onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} onGoToNextAction={goToNextAction} currentUser={currentUser} />
+                ) : agenda?.key === "no_baseline" ? (
+                  // V10 기본: 각도 관찰으로 첫 기준선을 만든다(Trigger→Hand→Angle→symptom_pending).
+                  <AngleObservationFlow mode="baseline" event={null} onClose={() => setActiveTab("home")} onGoToNextAction={goToNextAction} />
+                ) : (
+                  // FIX-1 §2 — 기준선이 있을 때도 막다른 화면 대신 agenda 기반 '기록 허브'를 보여준다.
+                  // 각 상태의 다음 행동으로 바로 이어지며, 추가 카메라 측정을 무제한 만들지 않는다.
+                  <div style={{ padding: "28px 20px", paddingBottom: "calc(28px + env(safe-area-inset-bottom))" }} data-testid="record-hub">
+                    <p style={{ fontSize: 11.5, fontWeight: 700, color: "#5B6478" }}>지금 필요한 기록</p>
+                    <h2 style={{ margin: "6px 0 4px", fontSize: 20, fontWeight: 900, color: "#16213D", lineHeight: 1.35 }}>
+                      {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting")
+                        ? "다음 관절 재확인 일정이 있어요"
+                        : (agenda?.label ?? "기록")}
+                    </h2>
+                    {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting") && agenda?.recheck && (
+                      <p style={{ fontSize: 13, color: "#5B6478", marginTop: 4 }}>예정일 · {formatDateValue(agenda.recheck.dueAt)}</p>
+                    )}
+                    <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+                      {agenda?.key === "symptom_pending" && (
+                        <button onClick={() => { trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_ENTRY_STARTED, currentUser?.uid, { eventId: agenda.eventId }); setSymptomEntry({ eventId: agenda.eventId, captureId: agenda.baselineCaptureId }); }}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>증상·상황 기록하기</button>
+                      )}
+                      {agenda?.key === "recheck_ready" && (
+                        <button onClick={() => setDecisionLoop({ mode: "recheck", recheck: agenda.recheck })}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>지금 재확인하기</button>
+                      )}
+                      {(agenda?.key === "week2_waiting" || agenda?.key === "week4_waiting") && (
+                        <button onClick={() => setShowEventMarker(true)}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>오늘 상태 메모하기</button>
+                      )}
+                      {agenda?.key === "awaiting_decision" && (
+                        <button onClick={() => setDecisionLoop({ mode: "decision" })}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>결과 기록하기</button>
+                      )}
+                      {agenda?.key === "loop_completed" && (
+                        <button onClick={() => setBaselineFlow(true)}
+                          style={{ minHeight: 48, background: "#122A5C", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800 }}>새 판단 루프 시작</button>
+                      )}
+                      <button onClick={() => setActiveTab("timeline")}
+                        style={{ minHeight: 44, background: "white", color: "#122A5C", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 800 }}>타임라인 보기</button>
+                      <button onClick={() => setActiveTab("home")}
+                        style={{ minHeight: 44, background: "white", color: "#5B6478", border: "1px solid #E1E7EF", borderRadius: 12, fontSize: 14, fontWeight: 700 }}>홈으로</button>
                     </div>
                   </div>
-                  {scanCount === 1 ? (
-                    <>
-                      {/* 측정 진입점 — 하단 탭 FAB과 별개로, 홈 상단에도 축소된 형태로 유지(첫 스캔 이후 재측정 유도) */}
-                      <button onClick={() => setActiveTab("scan")}
-                        style={{width:"100%",background:"#2563eb",color:"white",border:"none",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:44}}>
-                        <Camera style={{width:14,height:14}} />30초 스캔 시작하기
-                      </button>
-                      <FirstScanHomeState currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
-                      <div style={{marginTop:12}}>
-                        <RecentTimelinePreview setActiveTab={setActiveTab} />
-                      </div>
-                    </>
-                  ) : (
-                    <HomeModule currentProfile={currentProfile} scans={recentScans} recoverySteps={recoverySteps} setRecoverySteps={setRecoverySteps} setActiveTab={setActiveTab} triggerFeedback={triggerFeedback} onCheckIn={handleCheckIn} onConditionCheckIn={handleConditionCheckIn} swellingLevel={condition.swellingLevel} consistencyScore={habitScore.consistency.value} mobilityTrendUp={mobilityTrendUp} onOpenEventMarker={() => setShowEventMarker(true)} />
-                  )}
-                </div>
                 )
               )}
-              {activeTab === "scan" && <MotionScanPage currentProfile={currentProfile} onScanCompleted={handleScanCompleted} triggerFeedback={triggerFeedback} setActiveTab={setActiveTab} />}
               {activeTab === "coach" && <CoachModule currentProfile={currentProfile} triggerFeedback={triggerFeedback} />}
               {activeTab === "timeline" && <TimelineModule currentProfile={currentProfile} currentUser={currentUser} triggerFeedback={triggerFeedback} onOpenEventMarker={() => setShowEventMarker(true)} />}
               {activeTab === "report" && <ReportModule currentProfile={currentProfile} />}
@@ -384,7 +583,11 @@ useEffect(() => {
         zIndex:100,
         boxShadow:"0 -2px 12px rgba(0,0,0,0.08)",
       }}>
-        {TAB_CONFIG.map(tab => (
+        {TAB_CONFIG.map(tab => {
+          // 5개 탭을 균일하게 렌더 — 아이콘 크기·정렬을 맞추고, 색은 활성 탭만 강조한다.
+          // (이전에는 기록하기 탭이 raised FAB로 항상 파랗게 보여 "항상 활성"처럼 읽히고 줄이 어긋났다.)
+          const isActive = activeTab === tab.id;
+          return (
           <button key={tab.id} onClick={() => {
               if (tab.externalUrl) {
                 window.open(tab.externalUrl, "_blank", "noopener,noreferrer");
@@ -392,22 +595,18 @@ useEffect(() => {
               }
               setActiveTab(tab.id);
             }}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:activeTab===tab.id?"#2563eb":"#94a3b8",fontWeight:activeTab===tab.id?800:500,transition:"color 0.2s"}}>
-            {tab.fab ? (
-              <div style={{width:38,height:38,background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginTop:-16,boxShadow:"0 4px 12px rgba(37,99,235,0.25)"}}>
-                <tab.icon style={{width:20,height:20,color:"#2563eb"}} />
-              </div>
-            ) : (
-              <tab.icon style={{width:20,height:20}} />
-            )}
-            <span style={{fontSize:9,marginTop:2,whiteSpace:"nowrap"}}>{tab.label}</span>
+            aria-current={isActive ? "page" : undefined}
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"4px 0",minHeight:44,background:"none",border:"none",cursor:"pointer",color:isActive?"#122A5C":"#94a3b8",fontWeight:isActive?800:500,transition:"color 0.2s"}}>
+            <tab.icon style={{width:22,height:22}} strokeWidth={isActive?2.4:2} />
+            <span style={{fontSize:9,whiteSpace:"nowrap"}}>{tab.label}</span>
           </button>
-        ))}
+          );
+        })}
       </nav>
 
       {/* FEEDBACK TOAST */}
       {feedbackMsg && (
-        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#2563eb",color:"#172554",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(37,99,235,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",background:"#122A5C",color:"#ffffff",padding:"8px 16px",borderRadius:40,fontWeight:800,fontSize:11,boxShadow:"0 8px 24px rgba(37,99,235,0.3)",zIndex:100,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <Volume2 style={{width:14,height:14}} />{feedbackMsg}
         </div>
       )}
@@ -419,6 +618,56 @@ useEffect(() => {
           onSaved={() => { recordActivity(currentUser.uid); setHasAnyEvent(true); }}
           triggerFeedback={triggerFeedback}
         />
+      )}
+
+      {/* V9 DECISION LOOP — RC1.2.1부터 재확인도 AngleObservationFlow가 맡고, 여기는 선택→결과(decision)만 담당. */}
+      {decisionLoop && decisionLoop.mode === "decision" && currentUser && (
+        <DecisionLoopFlow
+          mode="decision"
+          event={activeEvent}
+          onClose={() => setDecisionLoop(null)}
+          onCompleted={() => { refreshAgenda(); triggerFeedback("기록이 저장되었습니다."); }}
+          simulateNetworkError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
+        />
+      )}
+
+      {/* RC1.2.1 — 재확인도 기준선과 같은 각도 관찰 프로토콜을 쓴다(같은 손 확인→각도→증상→비교). */}
+      {decisionLoop && decisionLoop.mode === "recheck" && currentUser && (
+        <AngleObservationFlow
+          mode="recheck"
+          event={activeEvent}
+          recheck={decisionLoop.recheck}
+          onClose={() => { setDecisionLoop(null); refreshAgenda(); }}
+          onCompleted={() => { refreshAgenda(); triggerFeedback("재확인 기록이 저장되었습니다."); }}
+        />
+      )}
+
+      {/* RC1.2 — V10 첫 기준선 각도 관찰 흐름(Trigger→Hand→Angle→symptom_pending) */}
+      {baselineFlow && currentUser && (
+        <AngleObservationFlow
+          mode="baseline"
+          event={activeEvent}
+          onClose={() => { setBaselineFlow(false); refreshAgenda(); }}
+          onGoToNextAction={goToNextAction}
+        />
+      )}
+
+      {/* RC1.2 — symptom_pending: 같은 Event의 증상 기록 → 성공 시 baseline 확정 + 2·4주 일정 */}
+      {symptomEntry && currentUser && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 320, overflowY: "auto", background: "#F4F6FA" }}>
+          <SymptomSnapshotForm
+            simulateError={shouldShowQaTools(currentUser) && qaSimulateNetworkError}
+            onCancel={() => setSymptomEntry(null)}
+            onSubmit={async (symptomSnapshot) => {
+              await v9Repository.confirmBaselineWithSymptom(symptomEntry.eventId, symptomEntry.captureId, symptomSnapshot);
+              trackKpiEvent(V9_ANALYTICS_EVENTS.SYMPTOM_SNAPSHOT_SAVED, currentUser?.uid, { eventId: symptomEntry.eventId });
+              trackKpiEvent(V9_ANALYTICS_EVENTS.BASELINE_COMPLETED, currentUser?.uid, { eventId: symptomEntry.eventId });
+              setSymptomEntry(null);
+              await refreshAgenda();
+              triggerFeedback("첫 기준선이 저장되었습니다. 2주·4주 뒤 다시 확인해요.");
+            }}
+          />
+        </div>
       )}
 
     </div>

@@ -13,7 +13,13 @@ export default [
       ecmaVersion: "latest",
       sourceType: "module",
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: { ...globals.browser, ...globals.node },
+      // __BUILD_SHA__/__BUILD_TIME__는 vite.config.js의 define이 빌드 시점에 주입한다.
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        __BUILD_SHA__: "readonly",
+        __BUILD_TIME__: "readonly",
+      },
     },
     settings: { react: { version: "18.3" } },
     plugins: {
