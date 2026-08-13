@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { BIOMARKER_METRICS } from "../../data/mockProfiles";
 import { FEATURE_FLAGS } from "../../config/featureFlags";
 import FourWeekReport from "../v9/FourWeekReport";
+import ClinicalSummaryReport from "../v9/ClinicalSummaryReport";
 import PatternInsightCard from "../PatternInsightCard";
 import JTCard from "../ui/JTCard";
 import { useReportData } from "../../hooks/useReportData";
@@ -26,6 +27,7 @@ function ReportModule({ currentProfile }) {
   const statusColors = { good:"bg-blue-50 border-blue-200 text-blue-700", stable:"bg-amber-50 border-amber-200 text-amber-700", warning:"bg-orange-50 border-orange-200 text-orange-700", danger:"bg-red-50 border-red-200 text-red-700" };
   const statusLabels = { good:"양호", stable:"주의", warning:"경고", danger:"위험" };
   const [showReport, setShowReport] = useState(false);
+  const [showClinical, setShowClinical] = useState(false);
   // 4주 리포트 게이트 — 동일 측정 방식(같은 poseProtocolVersion·handSide)의 기준선+재확인 2시점이
   // 실제로 있을 때만 리포트를 연다. 그 전에는 패턴·대표 변화 판정을 노출하지 않는다(TimelineModule
   // 관찰 추이와 동일한 2시점 규칙 재사용). null=로딩 → 활성화하지 않음(성급한 활성 표시 금지).
@@ -48,18 +50,27 @@ function ReportModule({ currentProfile }) {
         <h2 className="text-sm font-bold text-slate-900">4주 리포트</h2>
       </div>
       {reportUnlocked ? (
-        <button
-          onClick={() => setShowReport(true)}
-          className="w-full max-w-[300px] mx-auto min-h-[48px] flex items-center justify-center px-4 rounded-xl text-[15px] font-extrabold bg-[#122A5C] text-white"
-        >
-          4주 리포트 보기
-        </button>
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={() => setShowReport(true)}
+            className="w-full max-w-[300px] min-h-[48px] flex items-center justify-center px-4 rounded-xl text-[15px] font-extrabold bg-[#122A5C] text-white"
+          >
+            4주 리포트 보기
+          </button>
+          <button
+            onClick={() => setShowClinical(true)}
+            className="w-full max-w-[300px] min-h-[44px] flex items-center justify-center px-4 rounded-xl text-[13px] font-bold bg-white border border-[#122A5C] text-[#122A5C]"
+          >
+            병원 제출용 보고서 (인쇄)
+          </button>
+        </div>
       ) : (
         <div className="w-full max-w-[300px] mx-auto min-h-[48px] flex items-center justify-center px-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-center text-xs leading-relaxed">
           4주 재확인을 완료하면 관찰 기록을 한눈에 볼 수 있어요.
         </div>
       )}
       {showReport && reportUnlocked && <FourWeekReport onClose={() => setShowReport(false)} />}
+      {showClinical && reportUnlocked && <ClinicalSummaryReport onClose={() => setShowClinical(false)} />}
 
       <div className="text-center bg-white border border-slate-200 p-3 rounded-2xl shadow-sm">
         <h2 className="text-sm font-bold text-slate-900">내 손의 관찰 지표</h2>
